@@ -1,0 +1,275 @@
+import { useState, useEffect, useMemo } from 'react'
+import { supabase } from '../supabaseClient'
+
+const TURKISH_MONTHS = [
+    'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+]
+
+const TURKISH_DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+
+// Working hours: 09:00 - 19:00, every 30 minutes
+const ALL_SLOTS = []
+for (let h = 9; h < 19; h++) {
+    ALL_SLOTS.push(`${String(h).padStart(2, '0')}:00`)
+    ALL_SLOTS.push(`${String(h).padStart(2, '0')}:30`)
+}
+
+export default function CalendarView({
+    specialist,
+    service,
+    selectedDate,
+    selectedTime,
+    onSelectDate,
+    onSelectTime,
+    onNext,
+    onBack,
+}) {
+    const [currentMonth, setCurrentMonth] = useState(new Date())
+    const [busySlots, setBusySlots] = useState([]) // Array of ISO date-time strings
+    const [loadingSlots, setLoadingSlots] = useState(false)
+
+    const today = useMemo(() => {
+        const t = new Date()
+        t.setHours(0, 0, 0, 0)
+        return t
+    }, [])
+
+    // Load busy slots when date is selected
+    useEffect(() => {
+        if (selectedDate && specialist) {
+            loadBusySlots(selectedDate)
+        }
+    }, [selectedDate, specialist])
+
+    async function loadBusySlots(date) {
+        setLoadingSlots(true)
+        try {
+            // Load approved appointments for this specialist on this date
+            const dayStart = new Date(date)
+            dayStart.setHours(0, 0, 0, 0)
+            const dayEnd = new Date(date)
+            dayEnd.setHours(23, 59, 59, 999)
+
+            const { data, error } = await supabase
+                .from('appointments')
+                .select('start_time, duration')
+                .eq('specialist_id', specialist.id)
+                .gte('start_time', dayStart.toISOString())
+                .lte('start_time', dayEnd.toISOString())
+                .in('status', ['approved', 'pending'])
+
+            if (!error && data) {
+                // Calculate which slots are busy
+                const busy = []
+                data.forEach((apt) => {
+                    const aptStart = new Date(apt.start_time)
+                    const aptEnd = new Date(aptStart.getTime() + (apt.duration || 30) * 60000)
+
+                    ALL_SLOTS.forEach((slot) => {
+                        const [h, m] = slot.split(':').map(Number)
+                        const slotTime = new Date(date)
+                        slotTime.setHours(h, m, 0, 0)
+                        const slotEnd = new Date(slotTime.getTime() + 30 * 60000)
+
+                        // Check overlap
+                        if (slotTime < aptEnd && slotEnd > aptStart) {
+                            busy.push(slot)
+                        }
+                    })
+                })
+                setBusySlots([...new Set(busy)])
+            }
+        } catch (err) {
+            console.log('Meşgul saatler yüklenemedi:', err)
+            // Add some random busy slots for demo
+            const demoBusy = ['10:00', '10:30', '14:00', '14:30', '15:00', '16:30']
+            setBusySlots(demoBusy)
+        }
+        setLoadingSlots(false)
+    }
+
+    // Calendar grid generation
+    const calendarDays = useMemo(() => {
+        const year = currentMonth.getFullYear()
+        const month = currentMonth.getMonth()
+        const firstDay = new Date(year, month, 1)
+        const lastDay = new Date(year, month + 1, 0)
+
+        // Day of week (0=Mon, 6=Sun in our layout)
+        let startDow = firstDay.getDay() - 1
+        if (startDow < 0) startDow = 6
+
+        const days = []
+
+        // Empty slots before first day
+        for (let i = 0; i < startDow; i++) {
+            days.push({ day: null, date: null })
+        }
+
+        // Actual days
+        for (let d = 1; d <= lastDay.getDate(); d++) {
+            const date = new Date(year, month, d)
+            date.setHours(0, 0, 0, 0)
+            const isPast = date < today
+            const isToday = date.getTime() === today.getTime()
+
+            days.push({
+                day: d,
+                date,
+                isPast,
+                isToday,
+            })
+        }
+
+        return days
+    }, [currentMonth, today])
+
+    function isSameDay(d1, d2) {
+        if (!d1 || !d2) return false
+        return d1.getFullYear() === d2.getFullYear() &&
+            d1.getMonth() === d2.getMonth() &&
+            d1.getDate() === d2.getDate()
+    }
+
+    function prevMonth() {
+        setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+    }
+
+    function nextMonth() {
+        setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+    }
+
+    // Filter out past time slots for today
+    const availableSlots = useMemo(() => {
+        if (!selectedDate) return []
+        const isToday = isSameDay(selectedDate, today)
+
+        return ALL_SLOTS.map((slot) => {
+            const isBusy = busySlots.includes(slot)
+            let isPastTime = false
+
+            if (isToday) {
+                const now = new Date()
+                const [h, m] = slot.split(':').map(Number)
+                isPastTime = h < now.getHours() || (h === now.getHours() && m <= now.getMinutes())
+            }
+
+            return {
+                time: slot,
+                available: !isBusy && !isPastTime,
+                isBusy,
+                isPastTime,
+            }
+        })
+    }, [selectedDate, busySlots, today])
+
+    return (
+        <div className="calendar-container animate-fade-in-up">
+            <h2 className="step-title">Tarih & Saat Seçiniz</h2>
+            <p className="step-description">
+                <strong>{specialist?.name}</strong> için müsait tarih ve saatleri seçiniz.
+            </p>
+
+            {/* Month Navigation */}
+            <div className="calendar-header">
+                <button className="calendar-nav-btn" onClick={prevMonth} id="cal-prev-month">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                </button>
+                <span className="calendar-header__title">
+                    {TURKISH_MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+                </span>
+                <button className="calendar-nav-btn" onClick={nextMonth} id="cal-next-month">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 18l6-6-6-6" />
+                    </svg>
+                </button>
+            </div>
+
+            {/* Weekday Headers */}
+            <div className="calendar-weekdays">
+                {TURKISH_DAYS.map((day) => (
+                    <div key={day} className="calendar-weekday">{day}</div>
+                ))}
+            </div>
+
+            {/* Calendar Days */}
+            <div className="calendar-days">
+                {calendarDays.map((d, index) => (
+                    <button
+                        key={index}
+                        className={`calendar-day ${!d.day ? 'calendar-day--empty' : ''
+                            } ${d.isPast ? 'calendar-day--disabled' : ''
+                            } ${d.isToday ? 'calendar-day--today' : ''
+                            } ${isSameDay(d.date, selectedDate) ? 'calendar-day--selected' : ''
+                            }`}
+                        disabled={!d.day || d.isPast}
+                        onClick={() => {
+                            if (d.day && !d.isPast) {
+                                onSelectDate(d.date)
+                                onSelectTime(null) // Reset time when date changes
+                            }
+                        }}
+                    >
+                        {d.day}
+                    </button>
+                ))}
+            </div>
+
+            {/* Time Slots */}
+            {selectedDate && (
+                <>
+                    <div className="time-slots-title">
+                        {selectedDate.getDate()} {TURKISH_MONTHS[selectedDate.getMonth()]} - Saatler
+                    </div>
+
+                    {loadingSlots ? (
+                        <div className="loading-spinner" />
+                    ) : (
+                        <div className="time-slots-grid stagger-children">
+                            {availableSlots.map((slot) => (
+                                <button
+                                    key={slot.time}
+                                    className={`time-slot ${slot.available
+                                            ? selectedTime === slot.time
+                                                ? 'time-slot--selected'
+                                                : 'time-slot--available'
+                                            : 'time-slot--busy'
+                                        }`}
+                                    disabled={!slot.available}
+                                    onClick={() => slot.available && onSelectTime(slot.time)}
+                                    id={`time-slot-${slot.time.replace(':', '')}`}
+                                    title={!slot.available ? 'Bu saat dolu' : 'Müsait'}
+                                >
+                                    {slot.time}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+
+            <div className="nav-row">
+                <button className="btn btn-secondary" onClick={onBack} id="calendar-back-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M19 12H5M12 19l-7-7 7-7" />
+                    </svg>
+                    Geri
+                </button>
+                <button
+                    className="btn btn-primary"
+                    onClick={onNext}
+                    disabled={!selectedDate || !selectedTime}
+                    id="calendar-next-btn"
+                >
+                    Devam Et
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    )
+}
