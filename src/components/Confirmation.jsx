@@ -3,10 +3,12 @@ const TURKISH_MONTHS = [
     'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ]
 
-export default function Confirmation({ data, onConfirm, onBack, isSubmitting }) {
+export default function Confirmation({ data, totalDuration, totalPrice, onConfirm, onBack, isSubmitting }) {
     const dateStr = data.date
         ? `${data.date.getDate()} ${TURKISH_MONTHS[data.date.getMonth()]} ${data.date.getFullYear()}`
         : ''
+
+    const selectedServices = data.services || []
 
     return (
         <div className="animate-fade-in-up">
@@ -24,9 +26,18 @@ export default function Confirmation({ data, onConfirm, onBack, isSubmitting }) 
                     <span className="confirmation-label">Telefon</span>
                     <span className="confirmation-value">{data.customerPhone}</span>
                 </div>
-                <div className="confirmation-row">
-                    <span className="confirmation-label">Hizmet</span>
-                    <span className="confirmation-value">{data.service?.title}</span>
+                <div className="confirmation-row" style={{ alignItems: 'flex-start' }}>
+                    <span className="confirmation-label">Hizmetler</span>
+                    <span className="confirmation-value" style={{ textAlign: 'right' }}>
+                        {selectedServices.map((s, i) => (
+                            <div key={s.id} style={{ marginBottom: i < selectedServices.length - 1 ? '4px' : 0 }}>
+                                {s.title}
+                                <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-size-xs)', marginLeft: '6px' }}>
+                                    {s.duration}dk • {s.price}₺
+                                </span>
+                            </div>
+                        ))}
+                    </span>
                 </div>
                 <div className="confirmation-row">
                     <span className="confirmation-label">Uzman</span>
@@ -41,13 +52,13 @@ export default function Confirmation({ data, onConfirm, onBack, isSubmitting }) 
                     <span className="confirmation-value">{data.time}</span>
                 </div>
                 <div className="confirmation-row">
-                    <span className="confirmation-label">Süre</span>
-                    <span className="confirmation-value">{data.service?.duration} dk</span>
+                    <span className="confirmation-label">Toplam Süre</span>
+                    <span className="confirmation-value">{totalDuration} dk</span>
                 </div>
                 <div className="confirmation-row">
-                    <span className="confirmation-label">Ücret</span>
+                    <span className="confirmation-label">Toplam Ücret</span>
                     <span className="confirmation-value" style={{ color: 'var(--color-accent-dark)', fontWeight: 700 }}>
-                        {data.service?.price}₺
+                        {totalPrice}₺
                     </span>
                 </div>
             </div>

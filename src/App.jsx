@@ -33,7 +33,7 @@ function generateBookingCode() {
   return code
 }
 
-// Demo data - these will later come from Supabase
+// Demo data
 const DEMO_SERVICES = [
   { id: 1, title: 'Saç Kesimi', duration: 45, price: 250, icon: 'scissors' },
   { id: 2, title: 'Saç Boyama', duration: 90, price: 500, icon: 'palette' },
@@ -52,33 +52,43 @@ const DEMO_SPECIALISTS = [
   { id: 4, name: 'Elif Şahin', role: 'Masaj Terapisti', calendar_id: '' },
 ]
 
+// Demo uzman-hizmet eşleştirmesi
+const DEMO_SPECIALIST_SERVICES = [
+  { specialist_id: 1, service_id: 1 },
+  { specialist_id: 1, service_id: 2 },
+  { specialist_id: 2, service_id: 5 },
+  { specialist_id: 2, service_id: 6 },
+  { specialist_id: 2, service_id: 7 },
+  { specialist_id: 3, service_id: 3 },
+  { specialist_id: 3, service_id: 4 },
+  { specialist_id: 4, service_id: 8 },
+]
+
 function App() {
   const [currentStep, setCurrentStep] = useState(1)
   const [services, setServices] = useState(DEMO_SERVICES)
   const [specialists, setSpecialists] = useState(DEMO_SPECIALISTS)
+  const [specialistServices, setSpecialistServices] = useState(DEMO_SPECIALIST_SERVICES)
   const [bookingData, setBookingData] = useState({
     customerName: '',
     customerPhone: '',
-    service: null,
+    services: [],        // Artık dizi — birden fazla hizmet
     specialist: null,
     date: null,
     time: null,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [bookingResult, setBookingResult] = useState(null) // 'approved' | 'pending'
+  const [bookingResult, setBookingResult] = useState(null)
   const [bookingCode, setBookingCode] = useState('')
 
-  // Check if this is the admin route
   const isAdmin = window.location.pathname === '/admin' || window.location.hash === '#admin'
 
-  // Try loading data from Supabase on mount
   useEffect(() => {
     loadDataFromSupabase()
   }, [])
 
   async function loadDataFromSupabase() {
     try {
-      // Try to load services
       const { data: svcData, error: svcError } = await supabase
         .from('services')
         .select('*')
@@ -88,7 +98,6 @@ function App() {
         setServices(svcData)
       }
 
-      // Try to load specialists
       const { data: specData, error: specError } = await supabase
         .from('specialists')
         .select('*')
@@ -97,8 +106,16 @@ function App() {
       if (!specError && specData && specData.length > 0) {
         setSpecialists(specData)
       }
+
+      // Uzman-hizmet eşleştirmesini yükle
+      const { data: ssData, error: ssError } = await supabase
+        .from('specialist_services')
+        .select('*')
+
+      if (!ssError && ssData && ssData.length > 0) {
+        setSpecialistServices(ssData)
+      }
     } catch (err) {
-      // Supabase not configured yet, use demo data
       console.log('Supabase bağlantısı bulunamadı, demo veriler kullanılıyor.')
     }
   }
@@ -112,14 +129,43 @@ function App() {
   }
 
   function prevStep() {
+    // Uzman seçimi değiştiğinde temizle
+    if (currentStep === 3) {
+      updateBooking('specialist', null)
+    }
     setCurrentStep(prev => Math.max(prev - 1, 1))
+  }
+
+  // Seçilen hizmetlere göre uzmanları filtrele
+  function getFilteredSpecialists() {
+    if (!bookingData.services || bookingData.services.length === 0) return specialists
+
+    const selectedServiceIds = bookingData.services.map(s => s.id)
+
+    // Seçilen TÜM hizmetleri yapabilen uzmanları bul
+    return specialists.filter(specialist => {
+      const specialistServiceIds = specialistServices
+        .filter(ss => ss.specialist_id === specialist.id)
+        .map(ss => ss.service_id)
+
+      return selectedServiceIds.every(sid => specialistServiceIds.includes(sid))
+    })
+  }
+
+  // Toplam süre ve fiyat hesapla
+  function getTotals() {
+    const selectedSvcs = bookingData.services || []
+    return {
+      totalDuration: selectedSvcs.reduce((sum, s) => sum + s.duration, 0),
+      totalPrice: selectedSvcs.reduce((sum, s) => sum + Number(s.price), 0),
+      serviceTitles: selectedSvcs.map(s => s.title).join(', '),
+    }
   }
 
   async function handleSubmit() {
     setIsSubmitting(true)
 
     try {
-      // Girişleri temizle (XSS koruması)
       const safeName = sanitizeInput(bookingData.customerName)
       const safePhone = bookingData.customerPhone.replace(/[^0-9() ]/g, '')
 
@@ -129,7 +175,7 @@ function App() {
         return
       }
 
-      // Check if user is blacklisted
+      // Kara liste kontrolü
       const { data: blocked } = await supabase
         .from('blacklist')
         .select('id')
@@ -142,7 +188,7 @@ function App() {
         return
       }
 
-      // Rate limiting: aynı telefondan 24 saat içinde max 3 randevu
+      // Rate limiting
       const last24h = new Date()
       last24h.setHours(last24h.getHours() - 24)
 
@@ -153,15 +199,15 @@ function App() {
         .gte('created_at', last24h.toISOString())
 
       if (recentBookings && recentBookings.length >= 3) {
-        alert('24 saat içinde en fazla 3 randevu oluşturabilirsiniz. Lütfen daha sonra tekrar deneyiniz.')
+        alert('24 saat içinde en fazla 3 randevu oluşturabilirsiniz.')
         setIsSubmitting(false)
         return
       }
 
-      // Check if the user already has an appointment with this specialist this week
+      // Aynı hafta aynı uzman kontrolü
       const now = new Date()
       const startOfWeek = new Date(now)
-      startOfWeek.setDate(now.getDate() - now.getDay() + 1) // Monday
+      startOfWeek.setDate(now.getDate() - now.getDay() + 1)
       startOfWeek.setHours(0, 0, 0, 0)
       const endOfWeek = new Date(startOfWeek)
       endOfWeek.setDate(startOfWeek.getDate() + 6)
@@ -170,7 +216,7 @@ function App() {
       const { data: existing } = await supabase
         .from('appointments')
         .select('id')
-        .eq('customer_phone', bookingData.customerPhone)
+        .eq('customer_phone', safePhone)
         .eq('specialist_id', bookingData.specialist.id)
         .gte('start_time', startOfWeek.toISOString())
         .lte('start_time', endOfWeek.toISOString())
@@ -179,24 +225,24 @@ function App() {
       const needsApproval = existing && existing.length > 0
       const status = needsApproval ? 'pending' : 'approved'
 
-      // Create appointment
       const appointmentDateTime = new Date(bookingData.date)
       const [hours, minutes] = bookingData.time.split(':')
       appointmentDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0)
 
       const code = generateBookingCode()
+      const { totalDuration, totalPrice, serviceTitles } = getTotals()
 
       const { error } = await supabase
         .from('appointments')
         .insert({
           customer_name: safeName,
           customer_phone: safePhone,
-          service_id: bookingData.service.id,
-          service_title: bookingData.service.title,
+          service_id: bookingData.services[0]?.id || null,
+          service_title: serviceTitles,
           specialist_id: bookingData.specialist.id,
           specialist_name: bookingData.specialist.name,
           start_time: appointmentDateTime.toISOString(),
-          duration: bookingData.service.duration,
+          duration: totalDuration,
           status: status,
           booking_code: code,
         })
@@ -208,7 +254,6 @@ function App() {
       setCurrentStep(6)
     } catch (err) {
       console.error('Randevu hatası:', err)
-      // If Supabase is not connected, simulate success
       setBookingCode(generateBookingCode())
       setBookingResult('approved')
       setCurrentStep(6)
@@ -221,9 +266,11 @@ function App() {
     return <AdminPanel />
   }
 
+  const filteredSpecialists = getFilteredSpecialists()
+  const { totalDuration, totalPrice } = getTotals()
+
   return (
     <div className="app-container">
-      {/* Header */}
       <header className="app-header">
         <div className="app-header__icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -234,12 +281,10 @@ function App() {
         <p className="app-header__subtitle">Online Randevu Sistemi</p>
       </header>
 
-      {/* Step Indicator */}
       {currentStep <= 5 && (
         <StepIndicator currentStep={currentStep} totalSteps={5} />
       )}
 
-      {/* Main Card */}
       <div className="main-card glass-card">
         {currentStep === 1 && (
           <InfoForm
@@ -252,8 +297,8 @@ function App() {
         {currentStep === 2 && (
           <ServiceSelection
             services={services}
-            selected={bookingData.service}
-            onSelect={(s) => updateBooking('service', s)}
+            selected={bookingData.services}
+            onSelect={(svcs) => updateBooking('services', svcs)}
             onNext={nextStep}
             onBack={prevStep}
           />
@@ -261,7 +306,7 @@ function App() {
 
         {currentStep === 3 && (
           <SpecialistSelection
-            specialists={specialists}
+            specialists={filteredSpecialists}
             selected={bookingData.specialist}
             onSelect={(s) => updateBooking('specialist', s)}
             onNext={nextStep}
@@ -272,7 +317,8 @@ function App() {
         {currentStep === 4 && (
           <CalendarView
             specialist={bookingData.specialist}
-            service={bookingData.service}
+            service={bookingData.services[0]}
+            totalDuration={totalDuration}
             selectedDate={bookingData.date}
             selectedTime={bookingData.time}
             onSelectDate={(d) => updateBooking('date', d)}
@@ -285,6 +331,8 @@ function App() {
         {currentStep === 5 && (
           <Confirmation
             data={bookingData}
+            totalDuration={totalDuration}
+            totalPrice={totalPrice}
             onConfirm={handleSubmit}
             onBack={prevStep}
             isSubmitting={isSubmitting}
@@ -295,13 +343,15 @@ function App() {
           <SuccessScreen
             status={bookingResult}
             bookingData={bookingData}
+            totalDuration={totalDuration}
+            totalPrice={totalPrice}
             bookingCode={bookingCode}
             onNewBooking={() => {
               setCurrentStep(1)
               setBookingData({
                 customerName: '',
                 customerPhone: '',
-                service: null,
+                services: [],
                 specialist: null,
                 date: null,
                 time: null,

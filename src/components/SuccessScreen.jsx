@@ -3,12 +3,14 @@ const TURKISH_MONTHS = [
     'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ]
 
-export default function SuccessScreen({ status, bookingData, bookingCode, onNewBooking }) {
+export default function SuccessScreen({ status, bookingData, totalDuration, totalPrice, bookingCode, onNewBooking }) {
     const isPending = status === 'pending'
 
     const dateStr = bookingData?.date
         ? `${bookingData.date.getDate()} ${TURKISH_MONTHS[bookingData.date.getMonth()]} ${bookingData.date.getFullYear()}`
         : ''
+
+    const selectedServices = bookingData?.services || []
 
     return (
         <div className="success-screen">
@@ -88,9 +90,15 @@ export default function SuccessScreen({ status, bookingData, bookingCode, onNewB
                         <span className="confirmation-label">Telefon</span>
                         <span className="confirmation-value">{bookingData.customerPhone}</span>
                     </div>
-                    <div className="confirmation-row">
-                        <span className="confirmation-label">Hizmet</span>
-                        <span className="confirmation-value">{bookingData.service?.title}</span>
+                    <div className="confirmation-row" style={{ alignItems: 'flex-start' }}>
+                        <span className="confirmation-label">Hizmetler</span>
+                        <span className="confirmation-value" style={{ textAlign: 'right' }}>
+                            {selectedServices.map((s, i) => (
+                                <div key={s.id} style={{ marginBottom: i < selectedServices.length - 1 ? '4px' : 0 }}>
+                                    {s.title}
+                                </div>
+                            ))}
+                        </span>
                     </div>
                     <div className="confirmation-row">
                         <span className="confirmation-label">Uzman</span>
@@ -103,6 +111,16 @@ export default function SuccessScreen({ status, bookingData, bookingCode, onNewB
                     <div className="confirmation-row">
                         <span className="confirmation-label">Saat</span>
                         <span className="confirmation-value">{bookingData.time}</span>
+                    </div>
+                    <div className="confirmation-row">
+                        <span className="confirmation-label">Toplam Süre</span>
+                        <span className="confirmation-value">{totalDuration} dk</span>
+                    </div>
+                    <div className="confirmation-row">
+                        <span className="confirmation-label">Toplam Ücret</span>
+                        <span className="confirmation-value" style={{ color: 'var(--color-accent-dark)', fontWeight: 700 }}>
+                            {totalPrice}₺
+                        </span>
                     </div>
                     {isPending && (
                         <div className="confirmation-row">
