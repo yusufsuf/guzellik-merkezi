@@ -39,6 +39,7 @@ export default function AdminPanel() {
     const [activeTab, setActiveTab] = useState('pending')
     const [appointments, setAppointments] = useState([])
     const [blacklist, setBlacklist] = useState([])
+    const [specialistsList, setSpecialistsList] = useState([])
     const [loading, setLoading] = useState(false)
     const [sessionStart, setSessionStart] = useState(null)
 
@@ -92,6 +93,7 @@ export default function AdminPanel() {
             setSessionStart(Date.now())
             loadAppointments()
             loadBlacklist()
+            loadSpecialists()
         } else {
             const newAttempts = loginAttempts + 1
             setLoginAttempts(newAttempts)
@@ -136,6 +138,42 @@ export default function AdminPanel() {
             }
         } catch {
             // No blacklist data
+        }
+    }
+
+    async function loadSpecialists() {
+        try {
+            const { data, error } = await supabase
+                .from('specialists')
+                .select('*')
+                .order('id')
+
+            if (!error && data) {
+                setSpecialistsList(data)
+            }
+        } catch {
+            // No data
+        }
+    }
+
+    async function toggleSpecialistActive(id, currentStatus) {
+        const newStatus = !currentStatus
+        try {
+            const { error } = await supabase
+                .from('specialists')
+                .update({ is_active: newStatus })
+                .eq('id', id)
+
+            if (!error) {
+                setSpecialistsList(prev =>
+                    prev.map(s => s.id === id ? { ...s, is_active: newStatus } : s)
+                )
+            }
+        } catch {
+            // Demo mode
+            setSpecialistsList(prev =>
+                prev.map(s => s.id === id ? { ...s, is_active: newStatus } : s)
+            )
         }
     }
 
@@ -265,6 +303,7 @@ export default function AdminPanel() {
                     { key: 'rejected', label: 'Reddedilenler' },
                     { key: 'all', label: 'Tümü' },
                     { key: 'blacklist', label: 'Kara Liste' },
+                    { key: 'specialists', label: 'Uzmanlar' },
                 ].map((tab) => (
                     <button
                         key={tab.key}
@@ -277,8 +316,60 @@ export default function AdminPanel() {
                 ))}
             </div>
 
-            {/* Blacklist Tab */}
-            {activeTab === 'blacklist' ? (
+            {/* Uzmanlar Tab */}
+            {activeTab === 'specialists' ? (
+                <div className="animate-fade-in-up">
+                    <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>Uzman Yönetimi</h3>
+                    <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
+                        Pasif olan uzmanlar randevu ekranında görünmez.
+                    </p>
+
+                    {specialistsList.length === 0 ? (
+                        <div className="empty-state">
+                            <p className="empty-state__text">Uzman bulunamadı</p>
+                        </div>
+                    ) : (
+                        specialistsList.map((spec) => (
+                            <div key={spec.id} className="admin-card" style={{ marginBottom: 'var(--space-3)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ fontWeight: 600, fontSize: 'var(--font-size-base)' }}>
+                                            {spec.name}
+                                        </div>
+                                        <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                                            {spec.role}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                                        <span style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            fontSize: 'var(--font-size-xs)',
+                                            fontWeight: 600,
+                                            color: spec.is_active !== false ? '#16a34a' : '#dc2626',
+                                        }}>
+                                            <span style={{
+                                                width: 8, height: 8, borderRadius: '50%',
+                                                background: spec.is_active !== false ? '#16a34a' : '#dc2626',
+                                                display: 'inline-block',
+                                            }} />
+                                            {spec.is_active !== false ? 'Aktif' : 'Pasif'}
+                                        </span>
+                                        <button
+                                            className={spec.is_active !== false ? 'btn-reject' : 'btn-approve'}
+                                            onClick={() => toggleSpecialistActive(spec.id, spec.is_active !== false)}
+                                            style={{ fontSize: 'var(--font-size-xs)', padding: '6px 14px' }}
+                                        >
+                                            {spec.is_active !== false ? 'Pasife Al' : 'Aktif Et'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            ) : activeTab === 'blacklist' ? (
                 <div className="animate-fade-in-up">
                     <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>Engellenen Kullanıcılar</h3>
 

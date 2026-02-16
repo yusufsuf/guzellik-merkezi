@@ -162,7 +162,10 @@ function App() {
 
       const { data: specData, error: specError } = await supabase
         .from('specialists').select('*').order('id')
-      if (!specError && specData && specData.length > 0) setSpecialists(specData)
+      if (!specError && specData && specData.length > 0) {
+        // Sadece aktif uzmanları göster
+        setSpecialists(specData.filter(s => s.is_active !== false))
+      }
 
       const { data: ssData, error: ssError } = await supabase
         .from('specialist_services').select('*')
