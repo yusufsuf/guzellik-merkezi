@@ -10,6 +10,19 @@ import SuccessScreen from './components/SuccessScreen'
 import AdminPanel from './components/AdminPanel'
 import StepIndicator from './components/StepIndicator'
 
+// XSS koruması - kullanıcı girdilerini temizle
+function sanitizeInput(str) {
+  if (!str) return ''
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;')
+    .trim()
+}
+
 // Unique booking code generator
 function generateBookingCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -106,15 +119,41 @@ function App() {
     setIsSubmitting(true)
 
     try {
+      // Girişleri temizle (XSS koruması)
+      const safeName = sanitizeInput(bookingData.customerName)
+      const safePhone = bookingData.customerPhone.replace(/[^0-9() ]/g, '')
+
+      if (!safeName || safeName.length < 3) {
+        alert('Lütfen geçerli bir ad soyad giriniz.')
+        setIsSubmitting(false)
+        return
+      }
+
       // Check if user is blacklisted
       const { data: blocked } = await supabase
         .from('blacklist')
         .select('id')
-        .eq('phone', bookingData.customerPhone)
+        .eq('phone', safePhone)
         .maybeSingle()
 
       if (blocked) {
         alert('Bu telefon numarası ile randevu oluşturulamaz. Lütfen salonu arayınız.')
+        setIsSubmitting(false)
+        return
+      }
+
+      // Rate limiting: aynı telefondan 24 saat içinde max 3 randevu
+      const last24h = new Date()
+      last24h.setHours(last24h.getHours() - 24)
+
+      const { data: recentBookings } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('customer_phone', safePhone)
+        .gte('created_at', last24h.toISOString())
+
+      if (recentBookings && recentBookings.length >= 3) {
+        alert('24 saat içinde en fazla 3 randevu oluşturabilirsiniz. Lütfen daha sonra tekrar deneyiniz.')
         setIsSubmitting(false)
         return
       }
@@ -150,8 +189,8 @@ function App() {
       const { error } = await supabase
         .from('appointments')
         .insert({
-          customer_name: bookingData.customerName,
-          customer_phone: bookingData.customerPhone,
+          customer_name: safeName,
+          customer_phone: safePhone,
           service_id: bookingData.service.id,
           service_title: bookingData.service.title,
           specialist_id: bookingData.specialist.id,

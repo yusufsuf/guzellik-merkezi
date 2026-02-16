@@ -34,27 +34,74 @@ export default function AdminPanel() {
     const [isLoggedIn, setIsLoggedIn] = useState(false)
     const [password, setPassword] = useState('')
     const [loginError, setLoginError] = useState('')
+    const [loginAttempts, setLoginAttempts] = useState(0)
+    const [lockUntil, setLockUntil] = useState(null)
     const [activeTab, setActiveTab] = useState('pending')
     const [appointments, setAppointments] = useState([])
     const [blacklist, setBlacklist] = useState([])
     const [loading, setLoading] = useState(false)
+    const [sessionStart, setSessionStart] = useState(null)
 
     // Blacklist form
     const [blName, setBlName] = useState('')
     const [blPhone, setBlPhone] = useState('')
 
-    // Simple admin password (in production, use Supabase Auth)
-    const ADMIN_PASSWORD = 'admin123'
+    // Admin şifresi SHA-256 hash olarak saklanıyor
+    // Varsayılan şifre: 'GuzellikAdmin2026!' → hash'i aşağıda
+    const ADMIN_HASH = 'ba1c62ac26d48607bdce9364a6911f33854c68e557cd4dbc95da600c6ba8152b'
 
-    function handleLogin(e) {
+    // SHA-256 hash fonksiyonu
+    async function hashPassword(pwd) {
+        const encoder = new TextEncoder()
+        const data = encoder.encode(pwd)
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+        const hashArray = Array.from(new Uint8Array(hashBuffer))
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+
+    // Oturum zaman aşımı kontrolü (30 dakika)
+    useEffect(() => {
+        if (!isLoggedIn || !sessionStart) return
+        const timer = setInterval(() => {
+            const elapsed = Date.now() - sessionStart
+            if (elapsed > 30 * 60 * 1000) {
+                setIsLoggedIn(false)
+                setSessionStart(null)
+                alert('Oturum süresi doldu. Lütfen tekrar giriş yapınız.')
+            }
+        }, 60000)
+        return () => clearInterval(timer)
+    }, [isLoggedIn, sessionStart])
+
+    async function handleLogin(e) {
         e.preventDefault()
-        if (password === ADMIN_PASSWORD) {
+
+        // Brute force koruması: 5 başarısız deneme → 5 dakika kilitle
+        if (lockUntil && Date.now() < lockUntil) {
+            const remaining = Math.ceil((lockUntil - Date.now()) / 60000)
+            setLoginError(`Çok fazla hatalı deneme. ${remaining} dakika sonra tekrar deneyiniz.`)
+            return
+        }
+
+        const hashedInput = await hashPassword(password)
+        if (hashedInput === ADMIN_HASH) {
             setIsLoggedIn(true)
             setLoginError('')
+            setLoginAttempts(0)
+            setLockUntil(null)
+            setSessionStart(Date.now())
             loadAppointments()
             loadBlacklist()
         } else {
-            setLoginError('Yanlış şifre!')
+            const newAttempts = loginAttempts + 1
+            setLoginAttempts(newAttempts)
+            if (newAttempts >= 5) {
+                setLockUntil(Date.now() + 5 * 60 * 1000)
+                setLoginError('5 hatalı deneme! 5 dakika boyunca giriş yapılamaz.')
+                setLoginAttempts(0)
+            } else {
+                setLoginError(`Yanlış şifre! (${5 - newAttempts} deneme hakkınız kaldı)`)
+            }
         }
     }
 

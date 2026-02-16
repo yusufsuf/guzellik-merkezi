@@ -9,13 +9,17 @@ export default function InfoForm({ data, onUpdate, onNext }) {
             newErrors.name = 'Ad Soyad gereklidir'
         } else if (data.customerName.trim().split(' ').length < 2) {
             newErrors.name = 'Lütfen ad ve soyadınızı giriniz'
+        } else if (data.customerName.trim().length < 5) {
+            newErrors.name = 'Ad Soyad en az 5 karakter olmalıdır'
         }
 
         const phone = data.customerPhone.replace(/\D/g, '')
         if (!phone) {
             newErrors.phone = 'Telefon numarası gereklidir'
-        } else if (phone.length < 10) {
-            newErrors.phone = 'Geçerli bir telefon numarası giriniz'
+        } else if (phone.length !== 11) {
+            newErrors.phone = 'Telefon numarası 11 haneli olmalıdır'
+        } else if (!phone.startsWith('05')) {
+            newErrors.phone = 'Geçerli bir cep telefonu numarası giriniz (05XX ile başlamalı)'
         }
 
         setErrors(newErrors)
