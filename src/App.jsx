@@ -10,7 +10,7 @@ import SuccessScreen from './components/SuccessScreen'
 import AdminPanel from './components/AdminPanel'
 import StepIndicator from './components/StepIndicator'
 
-// XSS koruması - kullanıcı girdilerini temizle
+// XSS koruması
 function sanitizeInput(str) {
   if (!str) return ''
   return str
@@ -23,7 +23,7 @@ function sanitizeInput(str) {
     .trim()
 }
 
-// Unique booking code generator
+// Booking code üretici
 function generateBookingCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let code = ''
@@ -52,7 +52,6 @@ const DEMO_SPECIALISTS = [
   { id: 4, name: 'Elif Şahin', role: 'Masaj Terapisti', calendar_id: '' },
 ]
 
-// Demo uzman-hizmet eşleştirmesi
 const DEMO_SPECIALIST_SERVICES = [
   { specialist_id: 1, service_id: 1 },
   { specialist_id: 1, service_id: 2 },
@@ -64,22 +63,90 @@ const DEMO_SPECIALIST_SERVICES = [
   { specialist_id: 4, service_id: 8 },
 ]
 
+// Hizmetleri uzman uyumluluğuna göre grupla
+function createAppointmentGroups(selectedServices, specialistServicesMap, allSpecialists) {
+  const groups = []
+  const remaining = [...selectedServices]
+
+  while (remaining.length > 0) {
+    let bestMatchedServiceIds = []
+    let bestMatchCount = 0
+
+    // En çok hizmeti yapabilen uzmanı bul
+    for (const spec of allSpecialists) {
+      const canDoServiceIds = specialistServicesMap
+        .filter(ss => ss.specialist_id === spec.id)
+        .map(ss => ss.service_id)
+
+      const matched = remaining.filter(s => canDoServiceIds.includes(s.id))
+
+      if (matched.length > bestMatchCount) {
+        bestMatchCount = matched.length
+        bestMatchedServiceIds = matched.map(s => s.id)
+      }
+    }
+
+    if (bestMatchCount === 0) {
+      // Hiçbir uzman bulunamadı, hepsini tek grupta göster
+      groups.push({
+        services: [...remaining],
+        possibleSpecialists: allSpecialists,
+        specialist: null,
+        date: null,
+        time: null,
+      })
+      break
+    }
+
+    const groupServices = remaining.filter(s => bestMatchedServiceIds.includes(s.id))
+    const groupServiceIds = groupServices.map(s => s.id)
+
+    // Bu gruptaki TÜM hizmetleri yapabilen uzmanları bul
+    const possibleSpecialists = allSpecialists.filter(spec => {
+      const canDoIds = specialistServicesMap
+        .filter(ss => ss.specialist_id === spec.id)
+        .map(ss => ss.service_id)
+      return groupServiceIds.every(sid => canDoIds.includes(sid))
+    })
+
+    groups.push({
+      services: groupServices,
+      possibleSpecialists: possibleSpecialists.length > 0 ? possibleSpecialists : allSpecialists,
+      specialist: null,
+      date: null,
+      time: null,
+    })
+
+    // Atanan hizmetleri kaldır
+    const assignedIds = new Set(bestMatchedServiceIds)
+    remaining.splice(0, remaining.length, ...remaining.filter(s => !assignedIds.has(s.id)))
+  }
+
+  return groups
+}
+
 function App() {
-  const [currentStep, setCurrentStep] = useState(1)
+  // Aşama yönetimi
+  const [phase, setPhase] = useState('info') // 'info' | 'services' | 'specialist' | 'calendar' | 'confirm' | 'success'
+
+  // Veriler
   const [services, setServices] = useState(DEMO_SERVICES)
   const [specialists, setSpecialists] = useState(DEMO_SPECIALISTS)
   const [specialistServices, setSpecialistServices] = useState(DEMO_SPECIALIST_SERVICES)
-  const [bookingData, setBookingData] = useState({
-    customerName: '',
-    customerPhone: '',
-    services: [],        // Artık dizi — birden fazla hizmet
-    specialist: null,
-    date: null,
-    time: null,
-  })
+
+  // Müşteri bilgisi
+  const [customerInfo, setCustomerInfo] = useState({ customerName: '', customerPhone: '' })
+
+  // Seçilen hizmetler
+  const [selectedServices, setSelectedServices] = useState([])
+
+  // Randevu grupları
+  const [groups, setGroups] = useState([])
+  const [groupIndex, setGroupIndex] = useState(0)
+
+  // Gönderim
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [bookingResult, setBookingResult] = useState(null)
-  const [bookingCode, setBookingCode] = useState('')
+  const [bookingResults, setBookingResults] = useState([]) // [{code, status, group}]
 
   const isAdmin = window.location.pathname === '/admin' || window.location.hash === '#admin'
 
@@ -90,84 +157,114 @@ function App() {
   async function loadDataFromSupabase() {
     try {
       const { data: svcData, error: svcError } = await supabase
-        .from('services')
-        .select('*')
-        .order('id')
-
-      if (!svcError && svcData && svcData.length > 0) {
-        setServices(svcData)
-      }
+        .from('services').select('*').order('id')
+      if (!svcError && svcData && svcData.length > 0) setServices(svcData)
 
       const { data: specData, error: specError } = await supabase
-        .from('specialists')
-        .select('*')
-        .order('id')
+        .from('specialists').select('*').order('id')
+      if (!specError && specData && specData.length > 0) setSpecialists(specData)
 
-      if (!specError && specData && specData.length > 0) {
-        setSpecialists(specData)
-      }
-
-      // Uzman-hizmet eşleştirmesini yükle
       const { data: ssData, error: ssError } = await supabase
-        .from('specialist_services')
-        .select('*')
-
-      if (!ssError && ssData && ssData.length > 0) {
-        setSpecialistServices(ssData)
-      }
+        .from('specialist_services').select('*')
+      if (!ssError && ssData && ssData.length > 0) setSpecialistServices(ssData)
     } catch (err) {
       console.log('Supabase bağlantısı bulunamadı, demo veriler kullanılıyor.')
     }
   }
 
-  function updateBooking(field, value) {
-    setBookingData(prev => ({ ...prev, [field]: value }))
+  function updateCustomerInfo(field, value) {
+    setCustomerInfo(prev => ({ ...prev, [field]: value }))
   }
 
-  function nextStep() {
-    setCurrentStep(prev => Math.min(prev + 1, 5))
-  }
-
-  function prevStep() {
-    // Uzman seçimi değiştiğinde temizle
-    if (currentStep === 3) {
-      updateBooking('specialist', null)
-    }
-    setCurrentStep(prev => Math.max(prev - 1, 1))
-  }
-
-  // Seçilen hizmetlere göre uzmanları filtrele
-  function getFilteredSpecialists() {
-    if (!bookingData.services || bookingData.services.length === 0) return specialists
-
-    const selectedServiceIds = bookingData.services.map(s => s.id)
-
-    // Seçilen TÜM hizmetleri yapabilen uzmanları bul
-    return specialists.filter(specialist => {
-      const specialistServiceIds = specialistServices
-        .filter(ss => ss.specialist_id === specialist.id)
-        .map(ss => ss.service_id)
-
-      return selectedServiceIds.every(sid => specialistServiceIds.includes(sid))
+  function updateGroup(field, value) {
+    setGroups(prev => {
+      const updated = [...prev]
+      updated[groupIndex] = { ...updated[groupIndex], [field]: value }
+      return updated
     })
   }
 
-  // Toplam süre ve fiyat hesapla
-  function getTotals() {
-    const selectedSvcs = bookingData.services || []
-    return {
-      totalDuration: selectedSvcs.reduce((sum, s) => sum + s.duration, 0),
-      totalPrice: selectedSvcs.reduce((sum, s) => sum + Number(s.price), 0),
-      serviceTitles: selectedSvcs.map(s => s.title).join(', '),
+  // Adım göstergesi hesaplama
+  function getStepInfo() {
+    const numGroups = groups.length || 1
+    // info(1) + services(1) + her grup için (specialist+calendar)(2*N) + confirm(1)
+    const totalSteps = 3 + 2 * numGroups
+
+    let currentStep = 1
+    switch (phase) {
+      case 'info': currentStep = 1; break
+      case 'services': currentStep = 2; break
+      case 'specialist': currentStep = 3 + groupIndex * 2; break
+      case 'calendar': currentStep = 4 + groupIndex * 2; break
+      case 'confirm': currentStep = 3 + numGroups * 2; break
+      default: currentStep = 1
+    }
+
+    return { currentStep, totalSteps }
+  }
+
+  // Grup hizmet etiketi
+  function getGroupServiceLabel(group) {
+    if (!group || !group.services) return ''
+    return group.services.map(s => s.title).join(' ve ')
+  }
+
+  // --- NAVİGASYON ---
+  function handleInfoNext() {
+    setPhase('services')
+  }
+
+  function handleServicesNext() {
+    const newGroups = createAppointmentGroups(selectedServices, specialistServices, specialists)
+    setGroups(newGroups)
+    setGroupIndex(0)
+    setPhase('specialist')
+  }
+
+  function handleSpecialistNext() {
+    setPhase('calendar')
+  }
+
+  function handleCalendarNext() {
+    if (groupIndex < groups.length - 1) {
+      setGroupIndex(groupIndex + 1)
+      setPhase('specialist')
+    } else {
+      setPhase('confirm')
     }
   }
 
+  function handleBack() {
+    switch (phase) {
+      case 'services':
+        setPhase('info')
+        break
+      case 'specialist':
+        if (groupIndex === 0) {
+          setPhase('services')
+        } else {
+          setGroupIndex(groupIndex - 1)
+          setPhase('calendar')
+        }
+        break
+      case 'calendar':
+        setPhase('specialist')
+        break
+      case 'confirm':
+        setGroupIndex(groups.length - 1)
+        setPhase('calendar')
+        break
+    }
+  }
+
+  // --- RANDEVU GÖNDER ---
   async function handleSubmit() {
     setIsSubmitting(true)
+    const results = []
 
     try {
-      const safeName = sanitizeInput(bookingData.customerName)
-      const safePhone = bookingData.customerPhone.replace(/[^0-9() ]/g, '')
+      const safeName = sanitizeInput(customerInfo.customerName)
+      const safePhone = customerInfo.customerPhone.replace(/[^0-9() ]/g, '')
 
       if (!safeName || safeName.length < 3) {
         alert('Lütfen geçerli bir ad soyad giriniz.')
@@ -191,83 +288,93 @@ function App() {
       // Rate limiting
       const last24h = new Date()
       last24h.setHours(last24h.getHours() - 24)
-
       const { data: recentBookings } = await supabase
         .from('appointments')
         .select('id')
         .eq('customer_phone', safePhone)
         .gte('created_at', last24h.toISOString())
 
-      if (recentBookings && recentBookings.length >= 3) {
-        alert('24 saat içinde en fazla 3 randevu oluşturabilirsiniz.')
+      if (recentBookings && recentBookings.length >= 5) {
+        alert('24 saat içinde en fazla 5 randevu oluşturabilirsiniz.')
         setIsSubmitting(false)
         return
       }
 
-      // Aynı hafta aynı uzman kontrolü
-      const now = new Date()
-      const startOfWeek = new Date(now)
-      startOfWeek.setDate(now.getDate() - now.getDay() + 1)
-      startOfWeek.setHours(0, 0, 0, 0)
-      const endOfWeek = new Date(startOfWeek)
-      endOfWeek.setDate(startOfWeek.getDate() + 6)
-      endOfWeek.setHours(23, 59, 59, 999)
+      // Her grup için ayrı randevu oluştur
+      for (const group of groups) {
+        const code = generateBookingCode()
+        const serviceTitles = group.services.map(s => s.title).join(', ')
+        const totalDuration = group.services.reduce((sum, s) => sum + s.duration, 0)
 
-      const { data: existing } = await supabase
-        .from('appointments')
-        .select('id')
-        .eq('customer_phone', safePhone)
-        .eq('specialist_id', bookingData.specialist.id)
-        .gte('start_time', startOfWeek.toISOString())
-        .lte('start_time', endOfWeek.toISOString())
-        .in('status', ['pending', 'approved'])
+        const appointmentDateTime = new Date(group.date)
+        const [hours, minutes] = group.time.split(':')
+        appointmentDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0)
 
-      const needsApproval = existing && existing.length > 0
-      const status = needsApproval ? 'pending' : 'approved'
+        // Aynı hafta aynı uzman kontrolü
+        const now = new Date()
+        const startOfWeek = new Date(now)
+        startOfWeek.setDate(now.getDate() - now.getDay() + 1)
+        startOfWeek.setHours(0, 0, 0, 0)
+        const endOfWeek = new Date(startOfWeek)
+        endOfWeek.setDate(startOfWeek.getDate() + 6)
+        endOfWeek.setHours(23, 59, 59, 999)
 
-      const appointmentDateTime = new Date(bookingData.date)
-      const [hours, minutes] = bookingData.time.split(':')
-      appointmentDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0)
+        const { data: existing } = await supabase
+          .from('appointments')
+          .select('id')
+          .eq('customer_phone', safePhone)
+          .eq('specialist_id', group.specialist.id)
+          .gte('start_time', startOfWeek.toISOString())
+          .lte('start_time', endOfWeek.toISOString())
+          .in('status', ['pending', 'approved'])
 
-      const code = generateBookingCode()
-      const { totalDuration, totalPrice, serviceTitles } = getTotals()
+        const needsApproval = existing && existing.length > 0
+        const status = needsApproval ? 'pending' : 'approved'
 
-      const { error } = await supabase
-        .from('appointments')
-        .insert({
-          customer_name: safeName,
-          customer_phone: safePhone,
-          service_id: bookingData.services[0]?.id || null,
-          service_title: serviceTitles,
-          specialist_id: bookingData.specialist.id,
-          specialist_name: bookingData.specialist.name,
-          start_time: appointmentDateTime.toISOString(),
-          duration: totalDuration,
-          status: status,
-          booking_code: code,
-        })
+        const { error } = await supabase
+          .from('appointments')
+          .insert({
+            customer_name: safeName,
+            customer_phone: safePhone,
+            service_id: group.services[0]?.id || null,
+            service_title: serviceTitles,
+            specialist_id: group.specialist.id,
+            specialist_name: group.specialist.name,
+            start_time: appointmentDateTime.toISOString(),
+            duration: totalDuration,
+            status: status,
+            booking_code: code,
+          })
 
-      if (error) throw error
+        if (error) throw error
 
-      setBookingCode(code)
-      setBookingResult(status)
-      setCurrentStep(6)
+        results.push({ code, status, group })
+      }
+
+      setBookingResults(results)
+      setPhase('success')
     } catch (err) {
       console.error('Randevu hatası:', err)
-      setBookingCode(generateBookingCode())
-      setBookingResult('approved')
-      setCurrentStep(6)
+      // Demo mode
+      for (const group of groups) {
+        results.push({
+          code: generateBookingCode(),
+          status: 'approved',
+          group,
+        })
+      }
+      setBookingResults(results)
+      setPhase('success')
     }
 
     setIsSubmitting(false)
   }
 
-  if (isAdmin) {
-    return <AdminPanel />
-  }
+  // --- RENDER ---
+  if (isAdmin) return <AdminPanel />
 
-  const filteredSpecialists = getFilteredSpecialists()
-  const { totalDuration, totalPrice } = getTotals()
+  const { currentStep, totalSteps } = getStepInfo()
+  const currentGroup = groups[groupIndex]
 
   return (
     <div className="app-container">
@@ -281,83 +388,80 @@ function App() {
         <p className="app-header__subtitle">Online Randevu Sistemi</p>
       </header>
 
-      {currentStep <= 5 && (
-        <StepIndicator currentStep={currentStep} totalSteps={5} />
+      {phase !== 'success' && (
+        <StepIndicator currentStep={currentStep} totalSteps={totalSteps} />
       )}
 
       <div className="main-card glass-card">
-        {currentStep === 1 && (
+        {phase === 'info' && (
           <InfoForm
-            data={bookingData}
-            onUpdate={updateBooking}
-            onNext={nextStep}
+            data={customerInfo}
+            onUpdate={updateCustomerInfo}
+            onNext={handleInfoNext}
           />
         )}
 
-        {currentStep === 2 && (
+        {phase === 'services' && (
           <ServiceSelection
             services={services}
-            selected={bookingData.services}
-            onSelect={(svcs) => updateBooking('services', svcs)}
-            onNext={nextStep}
-            onBack={prevStep}
+            selected={selectedServices}
+            onSelect={setSelectedServices}
+            onNext={handleServicesNext}
+            onBack={handleBack}
           />
         )}
 
-        {currentStep === 3 && (
+        {phase === 'specialist' && currentGroup && (
           <SpecialistSelection
-            specialists={filteredSpecialists}
-            selected={bookingData.specialist}
-            onSelect={(s) => updateBooking('specialist', s)}
-            onNext={nextStep}
-            onBack={prevStep}
+            specialists={currentGroup.possibleSpecialists}
+            selected={currentGroup.specialist}
+            onSelect={(s) => updateGroup('specialist', s)}
+            onNext={handleSpecialistNext}
+            onBack={handleBack}
+            serviceLabel={getGroupServiceLabel(currentGroup)}
+            groupNumber={groups.length > 1 ? groupIndex + 1 : null}
+            totalGroups={groups.length}
           />
         )}
 
-        {currentStep === 4 && (
+        {phase === 'calendar' && currentGroup && (
           <CalendarView
-            specialist={bookingData.specialist}
-            service={bookingData.services[0]}
-            totalDuration={totalDuration}
-            selectedDate={bookingData.date}
-            selectedTime={bookingData.time}
-            onSelectDate={(d) => updateBooking('date', d)}
-            onSelectTime={(t) => updateBooking('time', t)}
-            onNext={nextStep}
-            onBack={prevStep}
+            specialist={currentGroup.specialist}
+            service={currentGroup.services[0]}
+            totalDuration={currentGroup.services.reduce((sum, s) => sum + s.duration, 0)}
+            selectedDate={currentGroup.date}
+            selectedTime={currentGroup.time}
+            onSelectDate={(d) => updateGroup('date', d)}
+            onSelectTime={(t) => updateGroup('time', t)}
+            onNext={handleCalendarNext}
+            onBack={handleBack}
+            serviceLabel={getGroupServiceLabel(currentGroup)}
+            groupNumber={groups.length > 1 ? groupIndex + 1 : null}
+            totalGroups={groups.length}
           />
         )}
 
-        {currentStep === 5 && (
+        {phase === 'confirm' && (
           <Confirmation
-            data={bookingData}
-            totalDuration={totalDuration}
-            totalPrice={totalPrice}
+            customerInfo={customerInfo}
+            groups={groups}
             onConfirm={handleSubmit}
-            onBack={prevStep}
+            onBack={handleBack}
             isSubmitting={isSubmitting}
           />
         )}
 
-        {currentStep === 6 && (
+        {phase === 'success' && (
           <SuccessScreen
-            status={bookingResult}
-            bookingData={bookingData}
-            totalDuration={totalDuration}
-            totalPrice={totalPrice}
-            bookingCode={bookingCode}
+            bookingResults={bookingResults}
+            customerInfo={customerInfo}
             onNewBooking={() => {
-              setCurrentStep(1)
-              setBookingData({
-                customerName: '',
-                customerPhone: '',
-                services: [],
-                specialist: null,
-                date: null,
-                time: null,
-              })
-              setBookingResult(null)
-              setBookingCode('')
+              setPhase('info')
+              setCustomerInfo({ customerName: '', customerPhone: '' })
+              setSelectedServices([])
+              setGroups([])
+              setGroupIndex(0)
+              setBookingResults([])
             }}
           />
         )}

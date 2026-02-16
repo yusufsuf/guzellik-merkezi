@@ -1,9 +1,26 @@
-export default function SpecialistSelection({ specialists, selected, onSelect, onNext, onBack }) {
+export default function SpecialistSelection({ specialists, selected, onSelect, onNext, onBack, serviceLabel, groupNumber, totalGroups }) {
     return (
         <div className="animate-fade-in-up">
             <h2 className="step-title">Uzman Seçiniz</h2>
             <p className="step-description">
-                Randevunuz için tercih ettiğiniz uzmanı seçiniz.
+                {serviceLabel ? (
+                    <>
+                        <strong>{serviceLabel}</strong> için tercih ettiğiniz uzmanı seçiniz.
+                        {groupNumber && totalGroups > 1 && (
+                            <span style={{
+                                display: 'block',
+                                marginTop: '6px',
+                                fontSize: 'var(--font-size-xs)',
+                                color: 'var(--color-accent)',
+                                fontWeight: 600,
+                            }}>
+                                Randevu {groupNumber} / {totalGroups}
+                            </span>
+                        )}
+                    </>
+                ) : (
+                    'Randevunuz için tercih ettiğiniz uzmanı seçiniz.'
+                )}
             </p>
 
             <div className="selection-grid stagger-children">
@@ -28,6 +45,17 @@ export default function SpecialistSelection({ specialists, selected, onSelect, o
                     </div>
                 ))}
             </div>
+
+            {specialists.length === 0 && (
+                <div style={{
+                    textAlign: 'center',
+                    padding: 'var(--space-6)',
+                    color: 'var(--color-text-muted)',
+                    fontSize: 'var(--font-size-sm)',
+                }}>
+                    Seçilen hizmetler için uygun uzman bulunamadı.
+                </div>
+            )}
 
             <div className="nav-row">
                 <button className="btn btn-secondary" onClick={onBack} id="specialist-back-btn">

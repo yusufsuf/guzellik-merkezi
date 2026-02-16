@@ -18,16 +18,22 @@ for (let h = 9; h < 19; h++) {
 export default function CalendarView({
     specialist,
     service,
+    totalDuration,
     selectedDate,
     selectedTime,
     onSelectDate,
     onSelectTime,
     onNext,
     onBack,
+    serviceLabel,
+    groupNumber,
+    totalGroups,
 }) {
     const [currentMonth, setCurrentMonth] = useState(new Date())
-    const [busySlots, setBusySlots] = useState([]) // Array of ISO date-time strings
+    const [busySlots, setBusySlots] = useState([])
     const [loadingSlots, setLoadingSlots] = useState(false)
+
+    const effectiveDuration = totalDuration || service?.duration || 30
 
     const today = useMemo(() => {
         const t = new Date()
@@ -35,7 +41,6 @@ export default function CalendarView({
         return t
     }, [])
 
-    // Load busy slots when date is selected
     useEffect(() => {
         if (selectedDate && specialist) {
             loadBusySlots(selectedDate)
@@ -45,7 +50,6 @@ export default function CalendarView({
     async function loadBusySlots(date) {
         setLoadingSlots(true)
         try {
-            // Load approved appointments for this specialist on this date
             const dayStart = new Date(date)
             dayStart.setHours(0, 0, 0, 0)
             const dayEnd = new Date(date)
@@ -60,7 +64,6 @@ export default function CalendarView({
                 .in('status', ['approved', 'pending'])
 
             if (!error && data) {
-                // Calculate which slots are busy
                 const busy = []
                 data.forEach((apt) => {
                     const aptStart = new Date(apt.start_time)
@@ -72,7 +75,6 @@ export default function CalendarView({
                         slotTime.setHours(h, m, 0, 0)
                         const slotEnd = new Date(slotTime.getTime() + 30 * 60000)
 
-                        // Check overlap
                         if (slotTime < aptEnd && slotEnd > aptStart) {
                             busy.push(slot)
                         }
@@ -82,44 +84,34 @@ export default function CalendarView({
             }
         } catch (err) {
             console.log('Meşgul saatler yüklenemedi:', err)
-            // Add some random busy slots for demo
             const demoBusy = ['10:00', '10:30', '14:00', '14:30', '15:00', '16:30']
             setBusySlots(demoBusy)
         }
         setLoadingSlots(false)
     }
 
-    // Calendar grid generation
     const calendarDays = useMemo(() => {
         const year = currentMonth.getFullYear()
         const month = currentMonth.getMonth()
         const firstDay = new Date(year, month, 1)
         const lastDay = new Date(year, month + 1, 0)
 
-        // Day of week (0=Mon, 6=Sun in our layout)
         let startDow = firstDay.getDay() - 1
         if (startDow < 0) startDow = 6
 
         const days = []
 
-        // Empty slots before first day
         for (let i = 0; i < startDow; i++) {
             days.push({ day: null, date: null })
         }
 
-        // Actual days
         for (let d = 1; d <= lastDay.getDate(); d++) {
             const date = new Date(year, month, d)
             date.setHours(0, 0, 0, 0)
             const isPast = date < today
             const isToday = date.getTime() === today.getTime()
 
-            days.push({
-                day: d,
-                date,
-                isPast,
-                isToday,
-            })
+            days.push({ day: d, date, isPast, isToday })
         }
 
         return days
@@ -140,7 +132,6 @@ export default function CalendarView({
         setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
     }
 
-    // Filter out past time slots for today
     const availableSlots = useMemo(() => {
         if (!selectedDate) return []
         const isToday = isSameDay(selectedDate, today)
@@ -167,9 +158,43 @@ export default function CalendarView({
     return (
         <div className="calendar-container animate-fade-in-up">
             <h2 className="step-title">Tarih & Saat Seçiniz</h2>
-            <p className="step-description">
-                <strong>{specialist?.name}</strong> için müsait tarih ve saatleri seçiniz.
-            </p>
+
+            {/* Hizmet bilgisi etiketi */}
+            {serviceLabel && (
+                <div style={{
+                    background: 'var(--color-cream)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--space-3) var(--space-4)',
+                    marginBottom: 'var(--space-4)',
+                    textAlign: 'center',
+                }}>
+                    <div style={{
+                        fontSize: 'var(--font-size-sm)',
+                        color: 'var(--color-accent-dark)',
+                        fontWeight: 600,
+                    }}>
+                        {serviceLabel} için randevu oluşturuyorsunuz
+                    </div>
+                    <div style={{
+                        fontSize: 'var(--font-size-xs)',
+                        color: 'var(--color-text-muted)',
+                        marginTop: '4px',
+                    }}>
+                        Uzman: {specialist?.name} • Toplam süre: {effectiveDuration} dk
+                        {groupNumber && totalGroups > 1 && (
+                            <span style={{ fontWeight: 600, color: 'var(--color-accent)', marginLeft: '8px' }}>
+                                (Randevu {groupNumber}/{totalGroups})
+                            </span>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {!serviceLabel && (
+                <p className="step-description">
+                    <strong>{specialist?.name}</strong> için müsait tarih ve saatleri seçiniz.
+                </p>
+            )}
 
             {/* Month Navigation */}
             <div className="calendar-header">
@@ -209,7 +234,7 @@ export default function CalendarView({
                         onClick={() => {
                             if (d.day && !d.isPast) {
                                 onSelectDate(d.date)
-                                onSelectTime(null) // Reset time when date changes
+                                onSelectTime(null)
                             }
                         }}
                     >
@@ -233,10 +258,10 @@ export default function CalendarView({
                                 <button
                                     key={slot.time}
                                     className={`time-slot ${slot.available
-                                            ? selectedTime === slot.time
-                                                ? 'time-slot--selected'
-                                                : 'time-slot--available'
-                                            : 'time-slot--busy'
+                                        ? selectedTime === slot.time
+                                            ? 'time-slot--selected'
+                                            : 'time-slot--available'
+                                        : 'time-slot--busy'
                                         }`}
                                     disabled={!slot.available}
                                     onClick={() => slot.available && onSelectTime(slot.time)}
