@@ -839,6 +839,18 @@
     grid-template-columns: 1fr;
   }
 
+  .admin-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-tab {
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-xs);
+  }
+
   .blacklist-form {
     flex-direction: column;
   }
@@ -846,4 +858,16 @@
   .nav-row {
     flex-direction: column-reverse;
   }
+}
+
+/* === Success Message === */
+.success-message {
+  background: var(--color-success-bg);
+  color: #2d6a32;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-4);
+  text-align: center;
+  font-weight: 500;
 }

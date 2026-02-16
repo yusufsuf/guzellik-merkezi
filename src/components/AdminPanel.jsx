@@ -30,6 +30,12 @@ const DEMO_APPOINTMENTS = [
     },
 ]
 
+// Kurtarma kodu — bunu güvenli bir yere kaydedin!
+const RECOVERY_CODE = 'GUZELLIK-KURTARMA-2026'
+
+// Varsayılan şifre hash'i: 'GuzellikAdmin2026!'
+const DEFAULT_ADMIN_HASH = 'ba1c62ac26d48607bdce9364a6911f33854c68e557cd4dbc95da600c6ba8152b'
+
 export default function AdminPanel() {
     const [isLoggedIn, setIsLoggedIn] = useState(false)
     const [password, setPassword] = useState('')
@@ -43,13 +49,30 @@ export default function AdminPanel() {
     const [loading, setLoading] = useState(false)
     const [sessionStart, setSessionStart] = useState(null)
 
+    // Şifre yönetimi
+    const [adminHash, setAdminHash] = useState(() => {
+        return localStorage.getItem('admin_hash') || DEFAULT_ADMIN_HASH
+    })
+
+    // Şifre değiştirme formu
+    const [currentPwd, setCurrentPwd] = useState('')
+    const [newPwd, setNewPwd] = useState('')
+    const [confirmPwd, setConfirmPwd] = useState('')
+    const [pwdMessage, setPwdMessage] = useState({ type: '', text: '' })
+
+    // Şifre sıfırlama (kurtarma kodu ile)
+    const [showRecovery, setShowRecovery] = useState(false)
+    const [recoveryInput, setRecoveryInput] = useState('')
+    const [recoveryNewPwd, setRecoveryNewPwd] = useState('')
+    const [recoveryConfirmPwd, setRecoveryConfirmPwd] = useState('')
+    const [recoveryMessage, setRecoveryMessage] = useState({ type: '', text: '' })
+
+    // Silme onayı
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+
     // Blacklist form
     const [blName, setBlName] = useState('')
     const [blPhone, setBlPhone] = useState('')
-
-    // Admin şifresi SHA-256 hash olarak saklanıyor
-    // Varsayılan şifre: 'GuzellikAdmin2026!' → hash'i aşağıda
-    const ADMIN_HASH = 'ba1c62ac26d48607bdce9364a6911f33854c68e557cd4dbc95da600c6ba8152b'
 
     // SHA-256 hash fonksiyonu
     async function hashPassword(pwd) {
@@ -77,7 +100,6 @@ export default function AdminPanel() {
     async function handleLogin(e) {
         e.preventDefault()
 
-        // Brute force koruması: 5 başarısız deneme → 5 dakika kilitle
         if (lockUntil && Date.now() < lockUntil) {
             const remaining = Math.ceil((lockUntil - Date.now()) / 60000)
             setLoginError(`Çok fazla hatalı deneme. ${remaining} dakika sonra tekrar deneyiniz.`)
@@ -85,7 +107,7 @@ export default function AdminPanel() {
         }
 
         const hashedInput = await hashPassword(password)
-        if (hashedInput === ADMIN_HASH) {
+        if (hashedInput === adminHash) {
             setIsLoggedIn(true)
             setLoginError('')
             setLoginAttempts(0)
@@ -105,6 +127,90 @@ export default function AdminPanel() {
                 setLoginError(`Yanlış şifre! (${5 - newAttempts} deneme hakkınız kaldı)`)
             }
         }
+    }
+
+    // Şifre değiştirme
+    async function handleChangePassword(e) {
+        e.preventDefault()
+        setPwdMessage({ type: '', text: '' })
+
+        if (!currentPwd || !newPwd || !confirmPwd) {
+            setPwdMessage({ type: 'error', text: 'Tüm alanları doldurunuz.' })
+            return
+        }
+
+        const currentHash = await hashPassword(currentPwd)
+        if (currentHash !== adminHash) {
+            setPwdMessage({ type: 'error', text: 'Mevcut şifre yanlış!' })
+            return
+        }
+
+        if (newPwd.length < 8) {
+            setPwdMessage({ type: 'error', text: 'Yeni şifre en az 8 karakter olmalıdır.' })
+            return
+        }
+
+        if (newPwd !== confirmPwd) {
+            setPwdMessage({ type: 'error', text: 'Yeni şifreler eşleşmiyor!' })
+            return
+        }
+
+        const newHash = await hashPassword(newPwd)
+        setAdminHash(newHash)
+        localStorage.setItem('admin_hash', newHash)
+
+        // Supabase'e de kaydet (varsa)
+        try {
+            await supabase.from('admin_settings')
+                .upsert({ key: 'admin_hash', value: newHash }, { onConflict: 'key' })
+        } catch {
+            // Supabase yoksa sadece localStorage'da kalır
+        }
+
+        setPwdMessage({ type: 'success', text: 'Şifre başarıyla değiştirildi!' })
+        setCurrentPwd('')
+        setNewPwd('')
+        setConfirmPwd('')
+    }
+
+    // Kurtarma kodu ile sıfırlama
+    async function handleRecoveryReset(e) {
+        e.preventDefault()
+        setRecoveryMessage({ type: '', text: '' })
+
+        if (recoveryInput !== RECOVERY_CODE) {
+            setRecoveryMessage({ type: 'error', text: 'Kurtarma kodu yanlış!' })
+            return
+        }
+
+        if (recoveryNewPwd.length < 8) {
+            setRecoveryMessage({ type: 'error', text: 'Yeni şifre en az 8 karakter olmalıdır.' })
+            return
+        }
+
+        if (recoveryNewPwd !== recoveryConfirmPwd) {
+            setRecoveryMessage({ type: 'error', text: 'Şifreler eşleşmiyor!' })
+            return
+        }
+
+        const newHash = await hashPassword(recoveryNewPwd)
+        setAdminHash(newHash)
+        localStorage.setItem('admin_hash', newHash)
+
+        try {
+            await supabase.from('admin_settings')
+                .upsert({ key: 'admin_hash', value: newHash }, { onConflict: 'key' })
+        } catch { }
+
+        setRecoveryMessage({ type: 'success', text: 'Şifre başarıyla sıfırlandı! Yeni şifrenizle giriş yapabilirsiniz.' })
+        setRecoveryInput('')
+        setRecoveryNewPwd('')
+        setRecoveryConfirmPwd('')
+
+        setTimeout(() => {
+            setShowRecovery(false)
+            setRecoveryMessage({ type: '', text: '' })
+        }, 3000)
     }
 
     async function loadAppointments() {
@@ -136,9 +242,7 @@ export default function AdminPanel() {
             if (!error && data) {
                 setBlacklist(data)
             }
-        } catch {
-            // No blacklist data
-        }
+        } catch { }
     }
 
     async function loadSpecialists() {
@@ -151,9 +255,7 @@ export default function AdminPanel() {
             if (!error && data) {
                 setSpecialistsList(data)
             }
-        } catch {
-            // No data
-        }
+        } catch { }
     }
 
     async function toggleSpecialistActive(id, currentStatus) {
@@ -170,7 +272,6 @@ export default function AdminPanel() {
                 )
             }
         } catch {
-            // Demo mode
             setSpecialistsList(prev =>
                 prev.map(s => s.id === id ? { ...s, is_active: newStatus } : s)
             )
@@ -190,11 +291,27 @@ export default function AdminPanel() {
                 )
             }
         } catch {
-            // Update locally for demo
             setAppointments(prev =>
                 prev.map(a => a.id === id ? { ...a, status: newStatus } : a)
             )
         }
+    }
+
+    // Randevu silme
+    async function deleteAppointment(id) {
+        try {
+            const { error } = await supabase
+                .from('appointments')
+                .delete()
+                .eq('id', id)
+
+            if (!error) {
+                setAppointments(prev => prev.filter(a => a.id !== id))
+            }
+        } catch {
+            setAppointments(prev => prev.filter(a => a.id !== id))
+        }
+        setDeleteConfirmId(null)
     }
 
     async function addToBlacklist() {
@@ -210,7 +327,6 @@ export default function AdminPanel() {
             if (!error && data) {
                 setBlacklist(prev => [data, ...prev])
             } else {
-                // Demo mode
                 setBlacklist(prev => [{ id: Date.now(), name: blName.trim(), phone: blPhone.trim() }, ...prev])
             }
         } catch {
@@ -224,9 +340,7 @@ export default function AdminPanel() {
     async function removeFromBlacklist(id) {
         try {
             await supabase.from('blacklist').delete().eq('id', id)
-        } catch {
-            // Demo mode
-        }
+        } catch { }
         setBlacklist(prev => prev.filter(b => b.id !== id))
     }
 
@@ -240,48 +354,127 @@ export default function AdminPanel() {
         return a.status === activeTab
     })
 
-    // Login Screen
+    // ===== LOGIN SCREEN =====
     if (!isLoggedIn) {
         return (
             <div className="admin-login">
-                <form className="admin-login__card glass-card-solid" onSubmit={handleLogin}>
-                    <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                        <div style={{
-                            width: 48, height: 48, margin: '0 auto 1rem',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: 'var(--color-cream)', borderRadius: 'var(--radius-md)',
-                        }}>
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                                <path d="M7 11V7a5 5 0 0110 0v4" />
-                            </svg>
+                {showRecovery ? (
+                    // Kurtarma kodu ile şifre sıfırlama
+                    <form className="admin-login__card glass-card-solid" onSubmit={handleRecoveryReset}>
+                        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                            <div style={{
+                                width: 48, height: 48, margin: '0 auto 1rem',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: '#fff3e0', borderRadius: 'var(--radius-md)',
+                            }}>
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e65100" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                                </svg>
+                            </div>
                         </div>
-                    </div>
-                    <h2 className="admin-login__title">Yönetici Girişi</h2>
+                        <h2 className="admin-login__title">Şifre Sıfırlama</h2>
 
-                    {loginError && <div className="error-message">{loginError}</div>}
+                        {recoveryMessage.text && (
+                            <div className={recoveryMessage.type === 'error' ? 'error-message' : 'success-message'}>
+                                {recoveryMessage.text}
+                            </div>
+                        )}
 
-                    <div className="form-group">
-                        <label className="form-label" htmlFor="admin-password">Şifre</label>
-                        <input
-                            id="admin-password"
-                            className="form-input"
-                            type="password"
-                            placeholder="Yönetici şifresi"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            autoFocus
-                        />
-                    </div>
-                    <button type="submit" className="btn btn-primary btn-full" id="admin-login-btn">
-                        Giriş Yap
-                    </button>
-                </form>
+                        <div className="form-group">
+                            <label className="form-label">Kurtarma Kodu</label>
+                            <input
+                                className="form-input"
+                                type="text"
+                                placeholder="Kurtarma kodunu giriniz"
+                                value={recoveryInput}
+                                onChange={(e) => setRecoveryInput(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Yeni Şifre</label>
+                            <input
+                                className="form-input"
+                                type="password"
+                                placeholder="Yeni şifre (min. 8 karakter)"
+                                value={recoveryNewPwd}
+                                onChange={(e) => setRecoveryNewPwd(e.target.value)}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Yeni Şifre (Tekrar)</label>
+                            <input
+                                className="form-input"
+                                type="password"
+                                placeholder="Yeni şifreyi tekrar giriniz"
+                                value={recoveryConfirmPwd}
+                                onChange={(e) => setRecoveryConfirmPwd(e.target.value)}
+                            />
+                        </div>
+                        <button type="submit" className="btn btn-primary btn-full">
+                            Şifreyi Sıfırla
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-secondary btn-full"
+                            style={{ marginTop: 'var(--space-3)' }}
+                            onClick={() => { setShowRecovery(false); setRecoveryMessage({ type: '', text: '' }) }}
+                        >
+                            Giriş Ekranına Dön
+                        </button>
+                    </form>
+                ) : (
+                    // Normal giriş
+                    <form className="admin-login__card glass-card-solid" onSubmit={handleLogin}>
+                        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                            <div style={{
+                                width: 48, height: 48, margin: '0 auto 1rem',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: 'var(--color-cream)', borderRadius: 'var(--radius-md)',
+                            }}>
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                                </svg>
+                            </div>
+                        </div>
+                        <h2 className="admin-login__title">Yönetici Girişi</h2>
+
+                        {loginError && <div className="error-message">{loginError}</div>}
+
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="admin-password">Şifre</label>
+                            <input
+                                id="admin-password"
+                                className="form-input"
+                                type="password"
+                                placeholder="Yönetici şifresi"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <button type="submit" className="btn btn-primary btn-full" id="admin-login-btn">
+                            Giriş Yap
+                        </button>
+                        <button
+                            type="button"
+                            style={{
+                                background: 'none', border: 'none', color: 'var(--color-accent)',
+                                fontSize: 'var(--font-size-sm)', cursor: 'pointer',
+                                marginTop: 'var(--space-4)', width: '100%', textAlign: 'center',
+                            }}
+                            onClick={() => setShowRecovery(true)}
+                        >
+                            Şifremi Unuttum
+                        </button>
+                    </form>
+                )}
             </div>
         )
     }
 
-    // Admin Dashboard
+    // ===== ADMIN DASHBOARD =====
     return (
         <div className="admin-container animate-fade-in">
             <div className="admin-header">
@@ -304,6 +497,7 @@ export default function AdminPanel() {
                     { key: 'all', label: 'Tümü' },
                     { key: 'blacklist', label: 'Kara Liste' },
                     { key: 'specialists', label: 'Uzmanlar' },
+                    { key: 'settings', label: '⚙ Ayarlar' },
                 ].map((tab) => (
                     <button
                         key={tab.key}
@@ -316,8 +510,84 @@ export default function AdminPanel() {
                 ))}
             </div>
 
-            {/* Uzmanlar Tab */}
-            {activeTab === 'specialists' ? (
+            {/* ===== AYARLAR TAB ===== */}
+            {activeTab === 'settings' ? (
+                <div className="animate-fade-in-up">
+                    <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>Şifre Değiştir</h3>
+
+                    {pwdMessage.text && (
+                        <div className={pwdMessage.type === 'error' ? 'error-message' : 'success-message'}
+                            style={{ marginBottom: 'var(--space-4)' }}>
+                            {pwdMessage.text}
+                        </div>
+                    )}
+
+                    <form onSubmit={handleChangePassword}>
+                        <div className="form-group">
+                            <label className="form-label">Mevcut Şifre</label>
+                            <input
+                                className="form-input"
+                                type="password"
+                                placeholder="Mevcut şifrenizi giriniz"
+                                value={currentPwd}
+                                onChange={(e) => setCurrentPwd(e.target.value)}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Yeni Şifre</label>
+                            <input
+                                className="form-input"
+                                type="password"
+                                placeholder="Yeni şifre (min. 8 karakter)"
+                                value={newPwd}
+                                onChange={(e) => setNewPwd(e.target.value)}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Yeni Şifre (Tekrar)</label>
+                            <input
+                                className="form-input"
+                                type="password"
+                                placeholder="Yeni şifreyi tekrar giriniz"
+                                value={confirmPwd}
+                                onChange={(e) => setConfirmPwd(e.target.value)}
+                            />
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ marginTop: 'var(--space-2)' }}>
+                            Şifreyi Değiştir
+                        </button>
+                    </form>
+
+                    <div style={{
+                        marginTop: 'var(--space-6)',
+                        padding: 'var(--space-4)',
+                        background: '#fff8e6',
+                        borderRadius: 'var(--radius-md)',
+                        borderLeft: '4px solid #c5a047',
+                    }}>
+                        <strong style={{ fontSize: 'var(--font-size-sm)', color: '#92710c' }}>
+                            Kurtarma Kodu
+                        </strong>
+                        <p style={{ fontSize: 'var(--font-size-sm)', color: '#92710c', margin: '8px 0 0' }}>
+                            Şifrenizi unuttuğunuzda giriş ekranındaki "Şifremi Unuttum" bağlantısını kullanarak
+                            kurtarma kodu ile sıfırlayabilirsiniz. Kurtarma kodunuz:
+                        </p>
+                        <div style={{
+                            fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-base)',
+                            color: '#92710c', marginTop: '8px', letterSpacing: '0.05em',
+                            background: '#fff1cc', padding: '8px 12px', borderRadius: '6px',
+                            display: 'inline-block',
+                        }}>
+                            {RECOVERY_CODE}
+                        </div>
+                        <p style={{ fontSize: 'var(--font-size-xs)', color: '#b08c1a', margin: '8px 0 0' }}>
+                            Bu kodu güvenli bir yere not ediniz!
+                        </p>
+                    </div>
+                </div>
+
+            ) : activeTab === 'specialists' ? (
+                /* ===== UZMANLAR TAB ===== */
                 <div className="animate-fade-in-up">
                     <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>Uzman Yönetimi</h3>
                     <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
@@ -342,11 +612,8 @@ export default function AdminPanel() {
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                                         <span style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            fontSize: 'var(--font-size-xs)',
-                                            fontWeight: 600,
+                                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                            fontSize: 'var(--font-size-xs)', fontWeight: 600,
                                             color: spec.is_active !== false ? '#16a34a' : '#dc2626',
                                         }}>
                                             <span style={{
@@ -369,23 +636,17 @@ export default function AdminPanel() {
                         ))
                     )}
                 </div>
+
             ) : activeTab === 'blacklist' ? (
+                /* ===== KARA LISTE TAB ===== */
                 <div className="animate-fade-in-up">
                     <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>Engellenen Kullanıcılar</h3>
 
                     <div className="blacklist-form">
-                        <input
-                            className="form-input"
-                            placeholder="Ad Soyad"
-                            value={blName}
-                            onChange={(e) => setBlName(e.target.value)}
-                        />
-                        <input
-                            className="form-input"
-                            placeholder="Telefon"
-                            value={blPhone}
-                            onChange={(e) => setBlPhone(e.target.value)}
-                        />
+                        <input className="form-input" placeholder="Ad Soyad"
+                            value={blName} onChange={(e) => setBlName(e.target.value)} />
+                        <input className="form-input" placeholder="Telefon"
+                            value={blPhone} onChange={(e) => setBlPhone(e.target.value)} />
                         <button className="btn btn-primary" onClick={addToBlacklist} id="blacklist-add-btn">
                             Ekle
                         </button>
@@ -407,18 +668,16 @@ export default function AdminPanel() {
                                     <div className="blacklist-item__name">{item.name}</div>
                                     <div className="blacklist-item__phone">{item.phone}</div>
                                 </div>
-                                <button
-                                    className="btn-remove"
-                                    onClick={() => removeFromBlacklist(item.id)}
-                                >
+                                <button className="btn-remove" onClick={() => removeFromBlacklist(item.id)}>
                                     Kaldır
                                 </button>
                             </div>
                         ))
                     )}
                 </div>
+
             ) : (
-                /* Appointments List */
+                /* ===== RANDEVULAR LİSTESİ ===== */
                 <div className="animate-fade-in-up">
                     {loading ? (
                         <div className="loading-spinner" />
@@ -458,26 +717,84 @@ export default function AdminPanel() {
 
                                     <span className="admin-card__detail-label">Süre</span>
                                     <span className="admin-card__detail-value">{apt.duration} dk</span>
+
+                                    {apt.booking_code && (
+                                        <>
+                                            <span className="admin-card__detail-label">Randevu Kodu</span>
+                                            <span className="admin-card__detail-value" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                                {apt.booking_code}
+                                            </span>
+                                        </>
+                                    )}
                                 </div>
 
-                                {apt.status === 'pending' && (
-                                    <div className="admin-card__actions">
+                                <div className="admin-card__actions">
+                                    {/* Onay/Red: sadece bekleyenler için */}
+                                    {apt.status === 'pending' && (
+                                        <>
+                                            <button
+                                                className="btn-approve"
+                                                onClick={() => updateStatus(apt.id, 'approved')}
+                                                id={`approve-${apt.id}`}
+                                            >
+                                                Onayla
+                                            </button>
+                                            <button
+                                                className="btn-reject"
+                                                onClick={() => updateStatus(apt.id, 'rejected')}
+                                                id={`reject-${apt.id}`}
+                                            >
+                                                Reddet
+                                            </button>
+                                        </>
+                                    )}
+
+                                    {/* Silme butonu: tüm durumlar için */}
+                                    {deleteConfirmId === apt.id ? (
+                                        <div style={{
+                                            display: 'flex', gap: 'var(--space-2)', alignItems: 'center',
+                                            background: '#fef2f2', padding: '6px 10px', borderRadius: '6px',
+                                        }}>
+                                            <span style={{ fontSize: 'var(--font-size-xs)', color: '#dc2626', fontWeight: 500 }}>
+                                                Silmek istediğinizden emin misiniz?
+                                            </span>
+                                            <button
+                                                style={{
+                                                    background: '#dc2626', color: 'white', border: 'none',
+                                                    padding: '4px 10px', borderRadius: '4px', fontSize: 'var(--font-size-xs)',
+                                                    cursor: 'pointer', fontWeight: 600,
+                                                }}
+                                                onClick={() => deleteAppointment(apt.id)}
+                                            >
+                                                Evet, Sil
+                                            </button>
+                                            <button
+                                                style={{
+                                                    background: '#e5e7eb', color: '#374151', border: 'none',
+                                                    padding: '4px 10px', borderRadius: '4px', fontSize: 'var(--font-size-xs)',
+                                                    cursor: 'pointer', fontWeight: 500,
+                                                }}
+                                                onClick={() => setDeleteConfirmId(null)}
+                                            >
+                                                İptal
+                                            </button>
+                                        </div>
+                                    ) : (
                                         <button
-                                            className="btn-approve"
-                                            onClick={() => updateStatus(apt.id, 'approved')}
-                                            id={`approve-${apt.id}`}
+                                            style={{
+                                                background: 'none', border: '1px solid #fecaca', color: '#dc2626',
+                                                padding: '4px 12px', borderRadius: '6px', fontSize: 'var(--font-size-xs)',
+                                                cursor: 'pointer', fontWeight: 500,
+                                                transition: 'all 0.2s',
+                                            }}
+                                            onClick={() => setDeleteConfirmId(apt.id)}
+                                            onMouseOver={(e) => { e.target.style.background = '#fef2f2' }}
+                                            onMouseOut={(e) => { e.target.style.background = 'none' }}
                                         >
-                                            Onayla
+                                            🗑 Sil
                                         </button>
-                                        <button
-                                            className="btn-reject"
-                                            onClick={() => updateStatus(apt.id, 'rejected')}
-                                            id={`reject-${apt.id}`}
-                                        >
-                                            Reddet
-                                        </button>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </div>
                         ))
                     )}
