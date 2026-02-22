@@ -355,9 +355,6 @@ function App() {
           booking_code: code,
         }
 
-        console.log('Randevu kaydediliyor:', insertData)
-        console.log('group.time:', group.time, '| timeStr:', timeStr)
-
         const { error } = await supabase
           .from('appointments')
           .insert(insertData)
