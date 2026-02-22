@@ -355,6 +355,8 @@ function App() {
         }
 
         console.log('Randevu kaydediliyor:', insertData)
+        console.log('group.time değeri:', group.time, '| typeof:', typeof group.time)
+        console.log('Tüm grup:', JSON.stringify(group, null, 2))
 
         const { error } = await supabase
           .from('appointments')
