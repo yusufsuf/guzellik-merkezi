@@ -340,6 +340,9 @@ function App() {
         const needsApproval = existing && existing.length > 0
         const status = needsApproval ? 'pending' : 'approved'
 
+        // Saat değerini garantile
+        const timeStr = group.time || `${String(appointmentDateTime.getHours()).padStart(2, '0')}:${String(appointmentDateTime.getMinutes()).padStart(2, '0')}`
+
         const insertData = {
           customer_name: safeName,
           customer_phone: safePhone,
@@ -348,15 +351,14 @@ function App() {
           specialist_id: group.specialist.id,
           specialist_name: group.specialist.name,
           start_time: toLocalISOString(appointmentDateTime),
-          appointment_time: group.time,
+          appointment_time: timeStr,
           duration: totalDuration,
           status: status,
           booking_code: code,
         }
 
         console.log('Randevu kaydediliyor:', insertData)
-        console.log('group.time değeri:', group.time, '| typeof:', typeof group.time)
-        console.log('Tüm grup:', JSON.stringify(group, null, 2))
+        console.log('group.time:', group.time, '| timeStr:', timeStr)
 
         const { error } = await supabase
           .from('appointments')
