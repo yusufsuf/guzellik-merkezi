@@ -316,7 +316,8 @@ function App() {
         const totalDuration = group.services.reduce((sum, s) => sum + s.duration, 0)
 
         const appointmentDateTime = new Date(group.date)
-        const [hours, minutes] = group.time.split(':')
+        const timeStr = group.time || '09:00'
+        const [hours, minutes] = timeStr.split(':')
         appointmentDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0)
 
         // Aynı hafta aynı uzman kontrolü
@@ -339,9 +340,6 @@ function App() {
 
         const needsApproval = existing && existing.length > 0
         const status = needsApproval ? 'pending' : 'approved'
-
-        // Saat değerini garantile
-        const timeStr = group.time || `${String(appointmentDateTime.getHours()).padStart(2, '0')}:${String(appointmentDateTime.getMinutes()).padStart(2, '0')}`
 
         const insertData = {
           customer_name: safeName,
