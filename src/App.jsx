@@ -9,6 +9,7 @@ import Confirmation from './components/Confirmation'
 import SuccessScreen from './components/SuccessScreen'
 import AdminPanel from './components/AdminPanel'
 import StepIndicator from './components/StepIndicator'
+import PhoneVerification from './components/PhoneVerification'
 
 // XSS koruması
 function sanitizeInput(str) {
@@ -133,7 +134,7 @@ function createAppointmentGroups(selectedServices, specialistServicesMap, allSpe
 
 function App() {
   // Aşama yönetimi
-  const [phase, setPhase] = useState('info') // 'info' | 'services' | 'specialist' | 'calendar' | 'confirm' | 'success'
+  const [phase, setPhase] = useState('info') // 'info' | 'verify' | 'services' | 'specialist' | 'calendar' | 'confirm' | 'success'
 
   // Veriler
   const [services, setServices] = useState(DEMO_SERVICES)
@@ -142,6 +143,7 @@ function App() {
 
   // Müşteri bilgisi
   const [customerInfo, setCustomerInfo] = useState({ customerName: '', customerPhone: '' })
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false)
 
   // Seçilen hizmetler
   const [selectedServices, setSelectedServices] = useState([])
@@ -196,16 +198,17 @@ function App() {
   // Adım göstergesi hesaplama
   function getStepInfo() {
     const numGroups = groups.length || 1
-    // info(1) + services(1) + her grup için (specialist+calendar)(2*N) + confirm(1)
-    const totalSteps = 3 + 2 * numGroups
+    // info(1) + verify(1) + services(1) + her grup için (specialist+calendar)(2*N) + confirm(1)
+    const totalSteps = 4 + 2 * numGroups
 
     let currentStep = 1
     switch (phase) {
       case 'info': currentStep = 1; break
-      case 'services': currentStep = 2; break
-      case 'specialist': currentStep = 3 + groupIndex * 2; break
-      case 'calendar': currentStep = 4 + groupIndex * 2; break
-      case 'confirm': currentStep = 3 + numGroups * 2; break
+      case 'verify': currentStep = 2; break
+      case 'services': currentStep = 3; break
+      case 'specialist': currentStep = 4 + groupIndex * 2; break
+      case 'calendar': currentStep = 5 + groupIndex * 2; break
+      case 'confirm': currentStep = 4 + numGroups * 2; break
       default: currentStep = 1
     }
 
@@ -220,6 +223,15 @@ function App() {
 
   // --- NAVİGASYON ---
   function handleInfoNext() {
+    if (isPhoneVerified) {
+      setPhase('services')
+    } else {
+      setPhase('verify')
+    }
+  }
+
+  function handlePhoneVerified() {
+    setIsPhoneVerified(true)
     setPhase('services')
   }
 
@@ -245,8 +257,15 @@ function App() {
 
   function handleBack() {
     switch (phase) {
-      case 'services':
+      case 'verify':
         setPhase('info')
+        break
+      case 'services':
+        if (isPhoneVerified) {
+          setPhase('info')
+        } else {
+          setPhase('verify')
+        }
         break
       case 'specialist':
         if (groupIndex === 0) {
@@ -414,6 +433,14 @@ function App() {
             data={customerInfo}
             onUpdate={updateCustomerInfo}
             onNext={handleInfoNext}
+          />
+        )}
+
+        {phase === 'verify' && (
+          <PhoneVerification
+            phone={customerInfo.customerPhone}
+            onVerified={handlePhoneVerified}
+            onBack={handleBack}
           />
         )}
 
