@@ -10,6 +10,7 @@ import SuccessScreen from './components/SuccessScreen'
 import AdminPanel from './components/AdminPanel'
 import StepIndicator from './components/StepIndicator'
 import PhoneVerification from './components/PhoneVerification'
+import AppointmentLookup from './components/AppointmentLookup'
 
 // XSS koruması
 function sanitizeInput(str) {
@@ -144,6 +145,7 @@ function App() {
   // Müşteri bilgisi
   const [customerInfo, setCustomerInfo] = useState({ customerName: '', customerPhone: '' })
   const [isPhoneVerified, setIsPhoneVerified] = useState(false)
+  const [showLookup, setShowLookup] = useState(false)
 
   // Seçilen hizmetler
   const [selectedServices, setSelectedServices] = useState([])
@@ -421,6 +423,19 @@ function App() {
         </div>
         <h1 className="app-header__title">Güzellik Merkezi</h1>
         <p className="app-header__subtitle">Online Randevu Sistemi</p>
+        <button
+          className="btn btn-secondary"
+          onClick={() => setShowLookup(true)}
+          style={{
+            marginTop: 'var(--space-3)', fontSize: 'var(--font-size-xs)',
+            padding: '6px 14px', borderRadius: 'var(--radius-full)',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          Randevu Sorgula
+        </button>
       </header>
 
       {phase !== 'success' && (
@@ -509,6 +524,8 @@ function App() {
           />
         )}
       </div>
+
+      {showLookup && <AppointmentLookup onClose={() => setShowLookup(false)} />}
     </div>
   )
 }
