@@ -350,6 +350,7 @@ function App() {
             specialist_id: group.specialist.id,
             specialist_name: group.specialist.name,
             start_time: toLocalISOString(appointmentDateTime),
+            appointment_time: group.time,
             duration: totalDuration,
             status: status,
             booking_code: code,

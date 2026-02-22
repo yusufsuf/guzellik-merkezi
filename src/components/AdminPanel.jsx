@@ -346,7 +346,7 @@ export default function AdminPanel() {
 
     function formatDate(isoStr) {
         const d = new Date(isoStr)
-        return `${d.getDate()} ${TURKISH_MONTHS[d.getMonth()]} ${d.getFullYear()} - ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        return `${d.getDate()} ${TURKISH_MONTHS[d.getMonth()]} ${d.getFullYear()}`
     }
 
     const filteredAppointments = appointments.filter(a => {
@@ -712,8 +712,11 @@ export default function AdminPanel() {
                                     <span className="admin-card__detail-label">Uzman</span>
                                     <span className="admin-card__detail-value">{apt.specialist_name}</span>
 
-                                    <span className="admin-card__detail-label">Tarih & Saat</span>
+                                    <span className="admin-card__detail-label">Tarih</span>
                                     <span className="admin-card__detail-value">{formatDate(apt.start_time)}</span>
+
+                                    <span className="admin-card__detail-label">Saat</span>
+                                    <span className="admin-card__detail-value">{apt.appointment_time || '—'}</span>
 
                                     <span className="admin-card__detail-label">Süre</span>
                                     <span className="admin-card__detail-value">{apt.duration} dk</span>
