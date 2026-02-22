@@ -23,6 +23,12 @@ function sanitizeInput(str) {
     .trim()
 }
 
+// Türkiye saati formatı (UTC+3, toISOString() yerine)
+function toLocalISOString(date) {
+  const pad = n => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 // Booking code üretici
 function generateBookingCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -327,8 +333,8 @@ function App() {
           .select('id')
           .eq('customer_phone', safePhone)
           .eq('specialist_id', group.specialist.id)
-          .gte('start_time', startOfWeek.toISOString())
-          .lte('start_time', endOfWeek.toISOString())
+          .gte('start_time', toLocalISOString(startOfWeek))
+          .lte('start_time', toLocalISOString(endOfWeek))
           .in('status', ['pending', 'approved'])
 
         const needsApproval = existing && existing.length > 0
@@ -343,7 +349,7 @@ function App() {
             service_title: serviceTitles,
             specialist_id: group.specialist.id,
             specialist_name: group.specialist.name,
-            start_time: appointmentDateTime.toISOString(),
+            start_time: toLocalISOString(appointmentDateTime),
             duration: totalDuration,
             status: status,
             booking_code: code,

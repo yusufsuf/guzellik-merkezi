@@ -49,6 +49,13 @@ export default function CalendarView({
 
     async function loadBusySlots(date) {
         setLoadingSlots(true)
+
+        // Türkiye saati formatı
+        function toLocal(d) {
+            const pad = n => String(n).padStart(2, '0')
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+        }
+
         try {
             const dayStart = new Date(date)
             dayStart.setHours(0, 0, 0, 0)
@@ -59,8 +66,8 @@ export default function CalendarView({
                 .from('appointments')
                 .select('start_time, duration')
                 .eq('specialist_id', specialist.id)
-                .gte('start_time', dayStart.toISOString())
-                .lte('start_time', dayEnd.toISOString())
+                .gte('start_time', toLocal(dayStart))
+                .lte('start_time', toLocal(dayEnd))
                 .in('status', ['approved', 'pending'])
 
             if (!error && data) {
