@@ -340,23 +340,30 @@ function App() {
         const needsApproval = existing && existing.length > 0
         const status = needsApproval ? 'pending' : 'approved'
 
+        const insertData = {
+          customer_name: safeName,
+          customer_phone: safePhone,
+          service_id: group.services[0]?.id || null,
+          service_title: serviceTitles,
+          specialist_id: group.specialist.id,
+          specialist_name: group.specialist.name,
+          start_time: toLocalISOString(appointmentDateTime),
+          appointment_time: group.time,
+          duration: totalDuration,
+          status: status,
+          booking_code: code,
+        }
+
+        console.log('Randevu kaydediliyor:', insertData)
+
         const { error } = await supabase
           .from('appointments')
-          .insert({
-            customer_name: safeName,
-            customer_phone: safePhone,
-            service_id: group.services[0]?.id || null,
-            service_title: serviceTitles,
-            specialist_id: group.specialist.id,
-            specialist_name: group.specialist.name,
-            start_time: toLocalISOString(appointmentDateTime),
-            appointment_time: group.time,
-            duration: totalDuration,
-            status: status,
-            booking_code: code,
-          })
+          .insert(insertData)
 
-        if (error) throw error
+        if (error) {
+          console.error('Supabase insert hatası:', error)
+          throw error
+        }
 
         results.push({ code, status, group })
       }
