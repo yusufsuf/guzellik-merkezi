@@ -44,6 +44,8 @@ function ClosedDaysTab() {
     const [newReason, setNewReason] = useState('')
     const [loading, setLoading] = useState(true)
     const [adding, setAdding] = useState(false)
+    const [editingId, setEditingId] = useState(null)
+    const [editReason, setEditReason] = useState('')
 
     useEffect(() => { loadClosedDays() }, [])
 
@@ -59,7 +61,6 @@ function ClosedDaysTab() {
         setLoading(false)
     }
 
-    // Tarih aralığındaki tüm günleri hesapla
     function getDateRange(start, end) {
         const dates = []
         const current = new Date(start + 'T00:00:00')
@@ -77,26 +78,17 @@ function ClosedDaysTab() {
     async function addClosedDay() {
         setAdding(true)
         const reason = newReason || 'Kapalı'
-
         try {
             if (mode === 'single') {
                 if (!newDate) { setAdding(false); return }
-                await supabase.from('closed_days')
-                    .upsert({ date: newDate, reason }, { onConflict: 'date' })
+                await supabase.from('closed_days').upsert({ date: newDate, reason }, { onConflict: 'date' })
                 setNewDate('')
             } else {
                 if (!rangeStart || !rangeEnd) { setAdding(false); return }
-                if (rangeEnd < rangeStart) {
-                    alert('Bitiş tarihi başlangıçtan önce olamaz!')
-                    setAdding(false)
-                    return
-                }
+                if (rangeEnd < rangeStart) { alert('Bitiş tarihi başlangıçtan önce olamaz!'); setAdding(false); return }
                 const dates = getDateRange(rangeStart, rangeEnd)
-                const rows = dates.map(d => ({ date: d, reason }))
-                await supabase.from('closed_days')
-                    .upsert(rows, { onConflict: 'date' })
-                setRangeStart('')
-                setRangeEnd('')
+                await supabase.from('closed_days').upsert(dates.map(d => ({ date: d, reason })), { onConflict: 'date' })
+                setRangeStart(''); setRangeEnd('')
             }
             setNewReason('')
             loadClosedDays()
@@ -105,57 +97,23 @@ function ClosedDaysTab() {
     }
 
     async function removeClosedDay(id) {
-        try {
-            await supabase.from('closed_days').delete().eq('id', id)
-            setClosedDays(prev => prev.filter(d => d.id !== id))
-        } catch { }
+        try { await supabase.from('closed_days').delete().eq('id', id); setClosedDays(prev => prev.filter(d => d.id !== id)) } catch { }
     }
 
-    // Toplu silme (tarih aralığı)
-    async function removeRange(dates) {
+    async function saveEdit(id) {
         try {
-            const ids = closedDays.filter(d => dates.includes(d.date)).map(d => d.id)
-            if (ids.length === 0) return
-            await supabase.from('closed_days').delete().in('id', ids)
-            setClosedDays(prev => prev.filter(d => !ids.includes(d.id)))
+            const { error } = await supabase.from('closed_days').update({ reason: editReason }).eq('id', id)
+            if (!error) { setClosedDays(prev => prev.map(d => d.id === id ? { ...d, reason: editReason } : d)); setEditingId(null); setEditReason('') }
         } catch { }
     }
 
     const MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
-
-    function formatDate(dateStr) {
-        const d = new Date(dateStr + 'T00:00:00')
-        return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
-    }
+    const DAYNAMES = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
+    function formatDate(dateStr) { const d = new Date(dateStr + 'T00:00:00'); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${DAYNAMES[d.getDay()]}` }
 
     const today = new Date().toISOString().split('T')[0]
     const futureDays = closedDays.filter(d => d.date >= today)
     const pastDays = closedDays.filter(d => d.date < today)
-
-    // Ardışık günleri grupla (aynı sebepli)
-    function groupConsecutive(days) {
-        if (days.length === 0) return []
-        const groups = []
-        let current = { start: days[0], end: days[0], reason: days[0].reason, ids: [days[0].id] }
-
-        for (let i = 1; i < days.length; i++) {
-            const prev = new Date(current.end.date + 'T00:00:00')
-            const curr = new Date(days[i].date + 'T00:00:00')
-            const diff = (curr - prev) / 86400000
-
-            if (diff === 1 && days[i].reason === current.reason) {
-                current.end = days[i]
-                current.ids.push(days[i].id)
-            } else {
-                groups.push(current)
-                current = { start: days[i], end: days[i], reason: days[i].reason, ids: [days[i].id] }
-            }
-        }
-        groups.push(current)
-        return groups
-    }
-
-    const groupedDays = groupConsecutive(futureDays)
 
     return (
         <div className="animate-fade-in-up">
@@ -166,128 +124,91 @@ function ClosedDaysTab() {
 
             {/* Mod seçimi */}
             <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-                <button
-                    className={`btn ${mode === 'single' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setMode('single')}
-                    style={{ fontSize: 'var(--font-size-xs)', padding: '6px 14px' }}
-                >
-                    📌 Tek Gün
-                </button>
-                <button
-                    className={`btn ${mode === 'range' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setMode('range')}
-                    style={{ fontSize: 'var(--font-size-xs)', padding: '6px 14px' }}
-                >
-                    📅 Tarih Aralığı
-                </button>
+                <button className={`btn ${mode === 'single' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setMode('single')} style={{ fontSize: 'var(--font-size-xs)', padding: '6px 14px' }}>📌 Tek Gün</button>
+                <button className={`btn ${mode === 'range' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setMode('range')} style={{ fontSize: 'var(--font-size-xs)', padding: '6px 14px' }}>📅 Tarih Aralığı</button>
             </div>
 
             {/* Tarih giriş */}
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
                 {mode === 'single' ? (
-                    <input
-                        className="form-input"
-                        type="date"
-                        min={today}
-                        value={newDate}
-                        onChange={(e) => setNewDate(e.target.value)}
-                        style={{ flex: 1, minWidth: 140 }}
-                    />
+                    <input className="form-input" type="date" min={today} value={newDate}
+                        onChange={(e) => setNewDate(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
                 ) : (
                     <>
                         <div style={{ flex: 1, minWidth: 130 }}>
                             <label style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', display: 'block', marginBottom: 2 }}>Başlangıç</label>
-                            <input
-                                className="form-input"
-                                type="date"
-                                min={today}
-                                value={rangeStart}
-                                onChange={(e) => setRangeStart(e.target.value)}
-                            />
+                            <input className="form-input" type="date" min={today} value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
                         </div>
                         <div style={{ flex: 1, minWidth: 130 }}>
                             <label style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', display: 'block', marginBottom: 2 }}>Bitiş</label>
-                            <input
-                                className="form-input"
-                                type="date"
-                                min={rangeStart || today}
-                                value={rangeEnd}
-                                onChange={(e) => setRangeEnd(e.target.value)}
-                            />
+                            <input className="form-input" type="date" min={rangeStart || today} value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} />
                         </div>
                     </>
                 )}
-                <input
-                    className="form-input"
-                    type="text"
-                    placeholder="Sebep (isteğe bağlı)"
-                    value={newReason}
-                    onChange={(e) => setNewReason(e.target.value)}
-                    style={{ flex: 2, minWidth: 140 }}
-                />
-                <button className="btn btn-primary" onClick={addClosedDay} disabled={adding}>
-                    {adding ? '...' : 'Ekle'}
-                </button>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+                <input className="form-input" type="text" placeholder="Açıklama yazın (ör: Bayram tatili, Tadilat, Personel izni...)"
+                    value={newReason} onChange={(e) => setNewReason(e.target.value)} style={{ flex: 1 }} />
+                <button className="btn btn-primary" onClick={addClosedDay} disabled={adding}>{adding ? '...' : 'Ekle'}</button>
             </div>
 
-            {/* Aralık ekleme bilgisi */}
+            {/* Aralık önizleme */}
             {mode === 'range' && rangeStart && rangeEnd && rangeEnd >= rangeStart && (
                 <div style={{
-                    fontSize: 'var(--font-size-xs)', color: 'var(--color-accent)',
-                    background: 'var(--color-cream)', padding: '8px 12px',
-                    borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)', marginTop: '-12px',
+                    fontSize: 'var(--font-size-xs)', color: 'var(--color-accent)', background: 'var(--color-cream)',
+                    padding: '8px 12px', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)'
                 }}>
                     {getDateRange(rangeStart, rangeEnd).length} gün eklenecek: {formatDate(rangeStart)} → {formatDate(rangeEnd)}
                 </div>
             )}
 
-            {/* Liste */}
+            {/* Tatil Listesi */}
             {loading ? (
                 <div className="loading-spinner" />
-            ) : groupedDays.length === 0 ? (
-                <div className="empty-state">
-                    <p className="empty-state__text">Tanımlı tatil günü bulunmuyor</p>
-                </div>
+            ) : futureDays.length === 0 ? (
+                <div className="empty-state"><p className="empty-state__text">Tanımlı tatil günü bulunmuyor</p></div>
             ) : (
-                groupedDays.map((group, i) => {
-                    const isRange = group.start.date !== group.end.date
-                    return (
-                        <div key={i} style={{
+                <>
+                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 500 }}>
+                        {futureDays.length} tatil günü tanımlı
+                    </div>
+                    {futureDays.map((day) => (
+                        <div key={day.id} style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                             padding: 'var(--space-3) var(--space-4)',
                             background: 'var(--color-cream)', borderRadius: 'var(--radius-md)',
                             marginBottom: 'var(--space-2)',
                         }}>
-                            <div>
-                                <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
-                                    {isRange ? (
-                                        <>📅 {formatDate(group.start.date)} → {formatDate(group.end.date)} <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>({group.ids.length} gün)</span></>
-                                    ) : (
-                                        <>📅 {formatDate(group.start.date)}</>
-                                    )}
+                            {editingId === day.id ? (
+                                <div style={{ flex: 1, display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', minWidth: 160 }}>📅 {formatDate(day.date)}</div>
+                                    <input className="form-input" type="text" value={editReason}
+                                        onChange={(e) => setEditReason(e.target.value)}
+                                        style={{ flex: 1, minWidth: 120, fontSize: 'var(--font-size-xs)' }} autoFocus />
+                                    <button onClick={() => saveEdit(day.id)}
+                                        style={{ background: '#22c55e', color: 'white', border: 'none', padding: '4px 12px', borderRadius: '6px', fontSize: 'var(--font-size-xs)', cursor: 'pointer', fontWeight: 600 }}>Kaydet</button>
+                                    <button onClick={() => { setEditingId(null); setEditReason('') }}
+                                        style={{ background: '#e5e7eb', color: '#374151', border: 'none', padding: '4px 12px', borderRadius: '6px', fontSize: 'var(--font-size-xs)', cursor: 'pointer' }}>İptal</button>
                                 </div>
-                                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                                    {group.reason}
-                                </div>
-                            </div>
-                            <button
-                                className="btn-remove"
-                                onClick={() => {
-                                    if (isRange) {
-                                        if (confirm(`${group.ids.length} günü silmek istediğinizden emin misiniz?`)) {
-                                            group.ids.forEach(id => removeClosedDay(id))
-                                        }
-                                    } else {
-                                        removeClosedDay(group.ids[0])
-                                    }
-                                }}
-                                style={{ fontSize: 'var(--font-size-xs)' }}
-                            >
-                                Kaldır
-                            </button>
+                            ) : (
+                                <>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>📅 {formatDate(day.date)}</div>
+                                        <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>{day.reason}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                                        <button onClick={() => { setEditingId(day.id); setEditReason(day.reason) }}
+                                            style={{ background: 'none', border: '1px solid #d1d5db', color: 'var(--color-accent)', padding: '4px 10px', borderRadius: '6px', fontSize: 'var(--font-size-xs)', cursor: 'pointer', fontWeight: 500 }}>✏️ Düzenle</button>
+                                        <button className="btn-remove" onClick={() => removeClosedDay(day.id)}
+                                            style={{ fontSize: 'var(--font-size-xs)' }}>Sil</button>
+                                    </div>
+                                </>
+                            )}
                         </div>
-                    )
-                })
+                    ))}
+                </>
             )}
 
             {pastDays.length > 0 && (
