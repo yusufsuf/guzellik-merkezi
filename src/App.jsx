@@ -228,36 +228,43 @@ function App() {
 
   async function handleInfoNext() {
     setBlacklistError('')
+    const cleanPhone = customerInfo.customerPhone.replace(/\D/g, '')
 
     // Kara liste kontrolü
     try {
-      const phone = customerInfo.customerPhone.replace(/\D/g, '')
       const { data } = await supabase
         .from('blacklist')
-        .select('id')
-        .or(`phone.eq.${customerInfo.customerPhone},phone.eq.${phone},phone.eq.0${phone}`)
-        .limit(1)
+        .select('phone')
 
       if (data && data.length > 0) {
-        setBlacklistError('Randevu işleminize devam edilemiyor. Detaylı bilgi için işletme ile iletişime geçiniz.')
-        return
+        const isBlocked = data.some(item => {
+          const blPhone = (item.phone || '').replace(/\D/g, '')
+          return blPhone === cleanPhone || blPhone === cleanPhone.slice(1) || ('0' + blPhone) === cleanPhone
+        })
+        if (isBlocked) {
+          setBlacklistError('Randevu işleminize devam edilemiyor. Detaylı bilgi için işletme ile iletişime geçiniz.')
+          return
+        }
       }
     } catch { }
 
     // Daha önce doğrulanmış mı kontrol et
     if (!isPhoneVerified) {
       try {
-        const phone = customerInfo.customerPhone.replace(/\D/g, '')
         const { data } = await supabase
           .from('verified_phones')
-          .select('id')
-          .or(`phone.eq.${phone},phone.eq.0${phone}`)
-          .limit(1)
+          .select('phone')
 
         if (data && data.length > 0) {
-          setIsPhoneVerified(true)
-          setPhase('services')
-          return
+          const isVerified = data.some(item => {
+            const vPhone = (item.phone || '').replace(/\D/g, '')
+            return vPhone === cleanPhone || vPhone === cleanPhone.slice(1) || ('0' + vPhone) === cleanPhone
+          })
+          if (isVerified) {
+            setIsPhoneVerified(true)
+            setPhase('services')
+            return
+          }
         }
       } catch { }
     }
