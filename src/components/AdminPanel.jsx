@@ -222,7 +222,7 @@ function ClosedDaysTab() {
 
 
 export default function AdminPanel() {
-    const [isLoggedIn, setIsLoggedIn] = useState(false)
+    const [isLoggedIn, setIsLoggedIn] = useState(() => sessionStorage.getItem('admin_logged_in') === 'true')
     const [password, setPassword] = useState('')
     const [loginError, setLoginError] = useState('')
     const [loginAttempts, setLoginAttempts] = useState(0)
@@ -232,7 +232,10 @@ export default function AdminPanel() {
     const [blacklist, setBlacklist] = useState([])
     const [specialistsList, setSpecialistsList] = useState([])
     const [loading, setLoading] = useState(false)
-    const [sessionStart, setSessionStart] = useState(null)
+    const [sessionStart, setSessionStart] = useState(() => {
+        const saved = sessionStorage.getItem('admin_session_start')
+        return saved ? parseInt(saved) : null
+    })
 
     // Şifre yönetimi — Supabase öncelikli, localStorage yedek
     const [adminHash, setAdminHash] = useState(
@@ -299,11 +302,22 @@ export default function AdminPanel() {
             if (elapsed > 30 * 60 * 1000) {
                 setIsLoggedIn(false)
                 setSessionStart(null)
+                sessionStorage.removeItem('admin_logged_in')
+                sessionStorage.removeItem('admin_session_start')
                 alert('Oturum süresi doldu. Lütfen tekrar giriş yapınız.')
             }
         }, 60000)
         return () => clearInterval(timer)
     }, [isLoggedIn, sessionStart])
+
+    // Sayfa yenilendiğinde oturum açıksa verileri yükle
+    useEffect(() => {
+        if (isLoggedIn && sessionStart) {
+            loadAppointments()
+            loadBlacklist()
+            loadSpecialists()
+        }
+    }, [])
 
     async function handleLogin(e) {
         e.preventDefault()
@@ -316,11 +330,14 @@ export default function AdminPanel() {
 
         const hashedInput = await hashPassword(password)
         if (hashedInput === adminHash) {
+            const now = Date.now()
             setIsLoggedIn(true)
             setLoginError('')
             setLoginAttempts(0)
             setLockUntil(null)
-            setSessionStart(Date.now())
+            setSessionStart(now)
+            sessionStorage.setItem('admin_logged_in', 'true')
+            sessionStorage.setItem('admin_session_start', String(now))
             loadAppointments()
             loadBlacklist()
             loadSpecialists()
@@ -788,7 +805,7 @@ export default function AdminPanel() {
                 <h1 className="admin-title">Yönetici Paneli</h1>
                 <button
                     className="btn btn-secondary"
-                    onClick={() => setIsLoggedIn(false)}
+                    onClick={() => { setIsLoggedIn(false); setSessionStart(null); sessionStorage.removeItem('admin_logged_in'); sessionStorage.removeItem('admin_session_start') }}
                     id="admin-logout-btn"
                 >
                     Çıkış Yap
