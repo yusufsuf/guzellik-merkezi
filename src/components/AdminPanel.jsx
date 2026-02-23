@@ -784,6 +784,7 @@ export default function AdminPanel() {
                     { key: 'all', label: 'Tümü' },
                     { key: 'stats', label: '📊 İstatistik' },
                     { key: 'closeddays', label: '📅 Tatil' },
+                    { key: 'reminders', label: '🔔 Hatırlatma' },
                     { key: 'blacklist', label: 'Kara Liste' },
                     { key: 'specialists', label: 'Uzmanlar' },
                     { key: 'settings', label: '⚙ Ayarlar' },
@@ -984,6 +985,84 @@ export default function AdminPanel() {
             ) : activeTab === 'closeddays' ? (
                 /* ===== TATİL GÜNLERİ TAB ===== */
                 <ClosedDaysTab />
+
+            ) : activeTab === 'reminders' ? (
+                /* ===== HATIRLATMA TAB ===== */
+                (() => {
+                    const now = new Date()
+                    const tomorrowStr = (() => {
+                        const t = new Date(now.getTime() + 86400000)
+                        return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+                    })()
+                    const in2h = new Date(now.getTime() + 2 * 3600000)
+
+                    const approvedApts = appointments.filter(a => a.status === 'approved' && a.start_time)
+                    const tomorrowApts = approvedApts.filter(a => a.start_time.slice(0, 10) === tomorrowStr && !a.reminder_1day_sent)
+                    const soonApts = approvedApts.filter(a => {
+                        const aptTime = new Date(a.start_time)
+                        return aptTime > now && aptTime <= in2h && !a.reminder_2h_sent
+                    })
+
+                    return (
+                        <div className="animate-fade-in-up">
+                            <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>🔔 Hatırlatma Sistemi</h3>
+                            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
+                                Onaylanan randevular için otomatik WhatsApp hatırlatma gönderilir.
+                            </p>
+
+                            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
+                                <div style={{ flex: 1, minWidth: 180, background: '#e8f5e9', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '2rem', marginBottom: 4 }}>📅</div>
+                                    <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: '#2d6a32' }}>{tomorrowApts.length}</div>
+                                    <div style={{ fontSize: 'var(--font-size-xs)', color: '#2d6a32' }}>Yarınki randevu<br />(1 gün hatırlatma bekliyor)</div>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 180, background: '#fff3e0', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '2rem', marginBottom: 4 }}>⏰</div>
+                                    <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: '#e65100' }}>{soonApts.length}</div>
+                                    <div style={{ fontSize: 'var(--font-size-xs)', color: '#e65100' }}>2 saat içindeki randevu<br />(2 saat hatırlatma bekliyor)</div>
+                                </div>
+                            </div>
+
+                            <div style={{ background: 'var(--color-cream)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+                                <h4 style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>⚙️ Nasıl Çalışır?</h4>
+                                <ul style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', paddingLeft: '1.2rem', lineHeight: 1.8 }}>
+                                    <li><strong>1 gün öncesi:</strong> Randevu günüden bir gün önce WhatsApp mesajı gönderilir</li>
+                                    <li><strong>2 saat öncesi:</strong> Randevuya 2 saat kala tekrar hatırlatma gönderilir</li>
+                                    <li>Sadece <strong>onaylanmış</strong> randevulara gönderilir</li>
+                                    <li>Her hatırlatma <strong>sadece 1 kez</strong> gönderilir (tekrar etmez)</li>
+                                </ul>
+                            </div>
+
+                            <button
+                                className="btn btn-primary"
+                                onClick={async () => {
+                                    try {
+                                        const { data, error } = await supabase.rpc('send_appointment_reminders')
+                                        if (error) {
+                                            alert('Hata: ' + error.message)
+                                        } else {
+                                            alert(`Hatırlatmalar gönderildi! (${data?.sent_count || 0} mesaj)`)
+                                            loadAppointments()
+                                        }
+                                    } catch (err) {
+                                        alert('Bağlantı hatası: ' + err.message)
+                                    }
+                                }}
+                                style={{ background: '#25D366', display: 'flex', alignItems: 'center', gap: 8 }}
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                                </svg>
+                                Hatırlatmaları Şimdi Gönder
+                            </button>
+
+                            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-3)' }}>
+                                💡 pg_cron aktifse hatırlatmalar her 30 dakikada otomatik gönderilir.
+                                Aktif değilse bu butonu kullanarak manuel gönderebilirsiniz.
+                            </p>
+                        </div>
+                    )
+                })()
 
             ) : activeTab === 'specialists' ? (
                 /* ===== UZMANLAR TAB ===== */
