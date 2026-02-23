@@ -234,10 +234,30 @@ export default function AdminPanel() {
     const [loading, setLoading] = useState(false)
     const [sessionStart, setSessionStart] = useState(null)
 
-    // Şifre yönetimi
-    const [adminHash, setAdminHash] = useState(() => {
-        return localStorage.getItem('admin_hash') || DEFAULT_ADMIN_HASH
-    })
+    // Şifre yönetimi — Supabase öncelikli, localStorage yedek
+    const [adminHash, setAdminHash] = useState(
+        localStorage.getItem('admin_hash') || DEFAULT_ADMIN_HASH
+    )
+
+    // Supabase'den güncel hash'i yükle (cihazlar arası senkronizasyon)
+    useEffect(() => {
+        async function loadHash() {
+            try {
+                const { data } = await supabase
+                    .from('admin_settings')
+                    .select('value')
+                    .eq('key', 'admin_hash')
+                    .single()
+                if (data?.value) {
+                    setAdminHash(data.value)
+                    localStorage.setItem('admin_hash', data.value)
+                }
+            } catch {
+                // Supabase'e erişilemezse localStorage'daki hash kullanılır
+            }
+        }
+        loadHash()
+    }, [])
 
     // Şifre değiştirme formu
     const [currentPwd, setCurrentPwd] = useState('')
