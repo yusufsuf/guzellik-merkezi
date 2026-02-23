@@ -133,13 +133,13 @@ export default function CalendarView({
             const isPast = date < today
             const isToday = date.getTime() === today.getTime()
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-            const closedInfo = closedDays.find(cd => cd.date === dateStr)
+            const closedInfo = closedDays.find(cd => (cd.date || '').slice(0, 10) === dateStr)
 
             days.push({ day: d, date, isPast, isToday, isClosed: !!closedInfo, closedReason: closedInfo?.reason })
         }
 
         return days
-    }, [currentMonth, today])
+    }, [currentMonth, today, closedDays])
 
     function isSameDay(d1, d2) {
         if (!d1 || !d2) return false
