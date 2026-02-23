@@ -158,7 +158,40 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [bookingResults, setBookingResults] = useState([]) // [{code, status, group}]
 
+  // PWA Install
+  const [deferredPrompt, setDeferredPrompt] = useState(null)
+  const [showInstallBanner, setShowInstallBanner] = useState(false)
+
   const isAdmin = window.location.pathname === '/admin' || window.location.hash === '#admin'
+
+  // PWA install prompt'u yakala
+  useEffect(() => {
+    const dismissed = localStorage.getItem('pwa_banner_dismissed')
+    if (dismissed) return
+
+    const handler = (e) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+      setShowInstallBanner(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    const { outcome } = await deferredPrompt.userChoice
+    if (outcome === 'accepted') {
+      setShowInstallBanner(false)
+    }
+    setDeferredPrompt(null)
+  }
+
+  const dismissInstallBanner = () => {
+    setShowInstallBanner(false)
+    localStorage.setItem('pwa_banner_dismissed', 'true')
+  }
 
   useEffect(() => {
     loadDataFromSupabase()
@@ -579,6 +612,48 @@ function App() {
       </div>
 
       {showLookup && <AppointmentLookup onClose={() => setShowLookup(false)} />}
+
+      {/* PWA Install Banner */}
+      {showInstallBanner && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          background: 'linear-gradient(135deg, #e65100, #bf360c)',
+          color: '#fff', padding: '14px 20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, zIndex: 9999,
+          boxShadow: '0 -4px 20px rgba(0,0,0,0.15)',
+          animation: 'slideUp 0.4s ease-out',
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: '0.95rem', marginBottom: 2 }}>
+              📱 Uygulamayı Yükle
+            </div>
+            <div style={{ fontSize: '0.78rem', opacity: 0.9 }}>
+              Ana ekrana ekleyerek hızlı erişim sağlayın
+            </div>
+          </div>
+          <button
+            onClick={handleInstallClick}
+            style={{
+              background: '#fff', color: '#e65100', border: 'none',
+              padding: '8px 18px', borderRadius: 8, fontWeight: 700,
+              fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            Yükle
+          </button>
+          <button
+            onClick={dismissInstallBanner}
+            style={{
+              background: 'none', border: 'none', color: '#fff',
+              fontSize: '1.3rem', cursor: 'pointer', padding: 4, opacity: 0.7,
+            }}
+            aria-label="Kapat"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }
