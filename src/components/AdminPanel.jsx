@@ -30,8 +30,7 @@ const DEMO_APPOINTMENTS = [
     },
 ]
 
-// Admin telefon numarası (WhatsApp şifre sıfırlama için)
-const ADMIN_PHONE = '0(534) 084 10 77'
+// Admin telefon numarası Supabase'de saklanır (admin_settings tablosu)
 
 // Varsayılan şifre hash'i: 'GuzellikAdmin2026!'
 const DEFAULT_ADMIN_HASH = 'ba1c62ac26d48607bdce9364a6911f33854c68e557cd4dbc95da600c6ba8152b'
@@ -188,9 +187,7 @@ export default function AdminPanel() {
         setRecoveryLoading(true)
         setRecoveryMessage({ type: '', text: '' })
         try {
-            const { data, error } = await supabase.rpc('send_otp', {
-                phone_input: ADMIN_PHONE
-            })
+            const { data, error } = await supabase.rpc('send_admin_reset_otp')
             if (error) throw error
             if (data?.success) {
                 setRecoveryStep('verify')
@@ -214,8 +211,7 @@ export default function AdminPanel() {
         setRecoveryLoading(true)
         setRecoveryMessage({ type: '', text: '' })
         try {
-            const { data, error } = await supabase.rpc('verify_otp', {
-                phone_input: ADMIN_PHONE,
+            const { data, error } = await supabase.rpc('verify_admin_reset_otp', {
                 code_input: recoveryOtp
             })
             if (error) throw error
