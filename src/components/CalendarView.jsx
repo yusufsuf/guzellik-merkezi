@@ -33,6 +33,7 @@ export default function CalendarView({
     const [busySlots, setBusySlots] = useState([])
     const [loadingSlots, setLoadingSlots] = useState(false)
     const [closedDays, setClosedDays] = useState([])
+    const [closedDayInfo, setClosedDayInfo] = useState(null) // {date, reason}
 
     const effectiveDuration = totalDuration || service?.duration || 30
 
@@ -253,20 +254,60 @@ export default function CalendarView({
                             } ${d.isToday ? 'calendar-day--today' : ''
                             } ${isSameDay(d.date, selectedDate) ? 'calendar-day--selected' : ''
                             }`}
-                        disabled={!d.day || d.isPast || d.isClosed}
-                        title={d.isClosed ? `Kapalı: ${d.closedReason}` : ''}
+                        disabled={!d.day || d.isPast}
                         onClick={() => {
-                            if (d.day && !d.isPast && !d.isClosed) {
+                            if (d.isClosed) {
+                                setClosedDayInfo({ date: d.date, reason: d.closedReason })
+                            } else if (d.day && !d.isPast) {
+                                setClosedDayInfo(null)
                                 onSelectDate(d.date)
                                 onSelectTime(null)
                             }
                         }}
-                        style={d.isClosed ? { textDecoration: 'line-through', color: '#ef4444' } : {}}
+                        style={d.isClosed ? {
+                            background: '#e5e7eb',
+                            color: '#9ca3af',
+                            cursor: 'pointer',
+                            opacity: 0.7,
+                        } : {}}
                     >
                         {d.day}
                     </button>
                 ))}
             </div>
+
+            {/* Kapalı gün bilgisi popup */}
+            {closedDayInfo && (
+                <div style={{
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--space-3) var(--space-4)',
+                    marginTop: 'var(--space-3)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    animation: 'fadeInUp 0.3s ease',
+                }}>
+                    <div>
+                        <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: '#dc2626' }}>
+                            🚫 {closedDayInfo.date.getDate()} {TURKISH_MONTHS[closedDayInfo.date.getMonth()]} — Kapalı
+                        </div>
+                        <div style={{ fontSize: 'var(--font-size-xs)', color: '#991b1b', marginTop: 2 }}>
+                            {closedDayInfo.reason}
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setClosedDayInfo(null)}
+                        style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            fontSize: '18px', color: '#dc2626', padding: '4px',
+                        }}
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
 
             {/* Time Slots */}
             {selectedDate && (

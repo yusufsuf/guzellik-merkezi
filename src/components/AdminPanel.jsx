@@ -37,9 +37,13 @@ const DEFAULT_ADMIN_HASH = 'ba1c62ac26d48607bdce9364a6911f33854c68e557cd4dbc95da
 // Tatil günleri yönetim bileşeni
 function ClosedDaysTab() {
     const [closedDays, setClosedDays] = useState([])
+    const [mode, setMode] = useState('single') // 'single' | 'range'
     const [newDate, setNewDate] = useState('')
+    const [rangeStart, setRangeStart] = useState('')
+    const [rangeEnd, setRangeEnd] = useState('')
     const [newReason, setNewReason] = useState('')
     const [loading, setLoading] = useState(true)
+    const [adding, setAdding] = useState(false)
 
     useEffect(() => { loadClosedDays() }, [])
 
@@ -55,24 +59,65 @@ function ClosedDaysTab() {
         setLoading(false)
     }
 
+    // Tarih aralığındaki tüm günleri hesapla
+    function getDateRange(start, end) {
+        const dates = []
+        const current = new Date(start + 'T00:00:00')
+        const last = new Date(end + 'T00:00:00')
+        while (current <= last) {
+            const y = current.getFullYear()
+            const m = String(current.getMonth() + 1).padStart(2, '0')
+            const d = String(current.getDate()).padStart(2, '0')
+            dates.push(`${y}-${m}-${d}`)
+            current.setDate(current.getDate() + 1)
+        }
+        return dates
+    }
+
     async function addClosedDay() {
-        if (!newDate) return
+        setAdding(true)
+        const reason = newReason || 'Kapalı'
+
         try {
-            const { error } = await supabase
-                .from('closed_days')
-                .insert({ date: newDate, reason: newReason || 'Kapalı' })
-            if (!error) {
+            if (mode === 'single') {
+                if (!newDate) { setAdding(false); return }
+                await supabase.from('closed_days')
+                    .upsert({ date: newDate, reason }, { onConflict: 'date' })
                 setNewDate('')
-                setNewReason('')
-                loadClosedDays()
+            } else {
+                if (!rangeStart || !rangeEnd) { setAdding(false); return }
+                if (rangeEnd < rangeStart) {
+                    alert('Bitiş tarihi başlangıçtan önce olamaz!')
+                    setAdding(false)
+                    return
+                }
+                const dates = getDateRange(rangeStart, rangeEnd)
+                const rows = dates.map(d => ({ date: d, reason }))
+                await supabase.from('closed_days')
+                    .upsert(rows, { onConflict: 'date' })
+                setRangeStart('')
+                setRangeEnd('')
             }
+            setNewReason('')
+            loadClosedDays()
         } catch { }
+        setAdding(false)
     }
 
     async function removeClosedDay(id) {
         try {
             await supabase.from('closed_days').delete().eq('id', id)
             setClosedDays(prev => prev.filter(d => d.id !== id))
+        } catch { }
+    }
+
+    // Toplu silme (tarih aralığı)
+    async function removeRange(dates) {
+        try {
+            const ids = closedDays.filter(d => dates.includes(d.date)).map(d => d.id)
+            if (ids.length === 0) return
+            await supabase.from('closed_days').delete().in('id', ids)
+            setClosedDays(prev => prev.filter(d => !ids.includes(d.id)))
         } catch { }
     }
 
@@ -83,10 +128,34 @@ function ClosedDaysTab() {
         return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
     }
 
-    // Bugünden önceki tarihleri filtrele
     const today = new Date().toISOString().split('T')[0]
     const futureDays = closedDays.filter(d => d.date >= today)
     const pastDays = closedDays.filter(d => d.date < today)
+
+    // Ardışık günleri grupla (aynı sebepli)
+    function groupConsecutive(days) {
+        if (days.length === 0) return []
+        const groups = []
+        let current = { start: days[0], end: days[0], reason: days[0].reason, ids: [days[0].id] }
+
+        for (let i = 1; i < days.length; i++) {
+            const prev = new Date(current.end.date + 'T00:00:00')
+            const curr = new Date(days[i].date + 'T00:00:00')
+            const diff = (curr - prev) / 86400000
+
+            if (diff === 1 && days[i].reason === current.reason) {
+                current.end = days[i]
+                current.ids.push(days[i].id)
+            } else {
+                groups.push(current)
+                current = { start: days[i], end: days[i], reason: days[i].reason, ids: [days[i].id] }
+            }
+        }
+        groups.push(current)
+        return groups
+    }
+
+    const groupedDays = groupConsecutive(futureDays)
 
     return (
         <div className="animate-fade-in-up">
@@ -95,60 +164,130 @@ function ClosedDaysTab() {
                 Kapalı olduğunuz günleri ekleyin. Bu günlerde müşteriler randevu alamaz.
             </p>
 
-            {/* Yeni tatil ekle */}
+            {/* Mod seçimi */}
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+                <button
+                    className={`btn ${mode === 'single' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setMode('single')}
+                    style={{ fontSize: 'var(--font-size-xs)', padding: '6px 14px' }}
+                >
+                    📌 Tek Gün
+                </button>
+                <button
+                    className={`btn ${mode === 'range' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setMode('range')}
+                    style={{ fontSize: 'var(--font-size-xs)', padding: '6px 14px' }}
+                >
+                    📅 Tarih Aralığı
+                </button>
+            </div>
+
+            {/* Tarih giriş */}
             <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
-                <input
-                    className="form-input"
-                    type="date"
-                    min={today}
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                    style={{ flex: 1, minWidth: 150 }}
-                />
+                {mode === 'single' ? (
+                    <input
+                        className="form-input"
+                        type="date"
+                        min={today}
+                        value={newDate}
+                        onChange={(e) => setNewDate(e.target.value)}
+                        style={{ flex: 1, minWidth: 140 }}
+                    />
+                ) : (
+                    <>
+                        <div style={{ flex: 1, minWidth: 130 }}>
+                            <label style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', display: 'block', marginBottom: 2 }}>Başlangıç</label>
+                            <input
+                                className="form-input"
+                                type="date"
+                                min={today}
+                                value={rangeStart}
+                                onChange={(e) => setRangeStart(e.target.value)}
+                            />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 130 }}>
+                            <label style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', display: 'block', marginBottom: 2 }}>Bitiş</label>
+                            <input
+                                className="form-input"
+                                type="date"
+                                min={rangeStart || today}
+                                value={rangeEnd}
+                                onChange={(e) => setRangeEnd(e.target.value)}
+                            />
+                        </div>
+                    </>
+                )}
                 <input
                     className="form-input"
                     type="text"
                     placeholder="Sebep (isteğe bağlı)"
                     value={newReason}
                     onChange={(e) => setNewReason(e.target.value)}
-                    style={{ flex: 2, minWidth: 150 }}
+                    style={{ flex: 2, minWidth: 140 }}
                 />
-                <button className="btn btn-primary" onClick={addClosedDay}>
-                    Ekle
+                <button className="btn btn-primary" onClick={addClosedDay} disabled={adding}>
+                    {adding ? '...' : 'Ekle'}
                 </button>
             </div>
 
+            {/* Aralık ekleme bilgisi */}
+            {mode === 'range' && rangeStart && rangeEnd && rangeEnd >= rangeStart && (
+                <div style={{
+                    fontSize: 'var(--font-size-xs)', color: 'var(--color-accent)',
+                    background: 'var(--color-cream)', padding: '8px 12px',
+                    borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)', marginTop: '-12px',
+                }}>
+                    {getDateRange(rangeStart, rangeEnd).length} gün eklenecek: {formatDate(rangeStart)} → {formatDate(rangeEnd)}
+                </div>
+            )}
+
+            {/* Liste */}
             {loading ? (
                 <div className="loading-spinner" />
-            ) : futureDays.length === 0 ? (
+            ) : groupedDays.length === 0 ? (
                 <div className="empty-state">
                     <p className="empty-state__text">Tanımlı tatil günü bulunmuyor</p>
                 </div>
             ) : (
-                futureDays.map((day) => (
-                    <div key={day.id} style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: 'var(--space-3) var(--space-4)',
-                        background: 'var(--color-cream)', borderRadius: 'var(--radius-md)',
-                        marginBottom: 'var(--space-2)',
-                    }}>
-                        <div>
-                            <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
-                                📅 {formatDate(day.date)}
+                groupedDays.map((group, i) => {
+                    const isRange = group.start.date !== group.end.date
+                    return (
+                        <div key={i} style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: 'var(--space-3) var(--space-4)',
+                            background: 'var(--color-cream)', borderRadius: 'var(--radius-md)',
+                            marginBottom: 'var(--space-2)',
+                        }}>
+                            <div>
+                                <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
+                                    {isRange ? (
+                                        <>📅 {formatDate(group.start.date)} → {formatDate(group.end.date)} <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>({group.ids.length} gün)</span></>
+                                    ) : (
+                                        <>📅 {formatDate(group.start.date)}</>
+                                    )}
+                                </div>
+                                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                                    {group.reason}
+                                </div>
                             </div>
-                            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                                {day.reason}
-                            </div>
+                            <button
+                                className="btn-remove"
+                                onClick={() => {
+                                    if (isRange) {
+                                        if (confirm(`${group.ids.length} günü silmek istediğinizden emin misiniz?`)) {
+                                            group.ids.forEach(id => removeClosedDay(id))
+                                        }
+                                    } else {
+                                        removeClosedDay(group.ids[0])
+                                    }
+                                }}
+                                style={{ fontSize: 'var(--font-size-xs)' }}
+                            >
+                                Kaldır
+                            </button>
                         </div>
-                        <button
-                            className="btn-remove"
-                            onClick={() => removeClosedDay(day.id)}
-                            style={{ fontSize: 'var(--font-size-xs)' }}
-                        >
-                            Kaldır
-                        </button>
-                    </div>
-                ))
+                    )
+                })
             )}
 
             {pastDays.length > 0 && (
@@ -159,6 +298,7 @@ function ClosedDaysTab() {
         </div>
     )
 }
+
 
 export default function AdminPanel() {
     const [isLoggedIn, setIsLoggedIn] = useState(false)
