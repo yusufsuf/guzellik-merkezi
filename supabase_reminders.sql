@@ -1,14 +1,12 @@
 -- ============================================
--- RANDEVU HATIRLATMA SİSTEMİ
--- WhatsApp ile otomatik hatırlatma gönderir
--- Bu SQL'i Supabase SQL Editor'de çalıştırınız.
+-- RANDEVU HATIRLATMA SİSTEMİ (DÜZELTME)
+-- API bilgileri mevcut çalışan sistemle eşleştirildi
+-- Supabase SQL Editor'de çalıştırınız.
 -- ============================================
 
--- 1) Hatırlatma takibi için sütunlar ekle
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_1day_sent BOOLEAN DEFAULT FALSE;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_2h_sent BOOLEAN DEFAULT FALSE;
+-- Eski flag'ları sıfırla (tekrar test için)
+UPDATE appointments SET reminder_1day_sent = FALSE, reminder_2h_sent = FALSE;
 
--- 2) Hatırlatma gönderen fonksiyon
 CREATE OR REPLACE FUNCTION send_appointment_reminders()
 RETURNS JSON
 LANGUAGE plpgsql
@@ -18,148 +16,111 @@ DECLARE
   rec RECORD;
   msg TEXT;
   clean_phone TEXT;
-  api_url TEXT;
-  api_key TEXT;
-  instance_name TEXT;
-  now_tr TIMESTAMPTZ;
+  now_tr TIMESTAMP;
+  tomorrow_date TEXT;
+  today_date TEXT;
   sent_count INT := 0;
-  response_status INT;
+  found_count INT := 0;
+  all_count INT := 0;
 BEGIN
-  -- Türkiye saati
-  now_tr := NOW() AT TIME ZONE 'Europe/Istanbul';
+  now_tr := (NOW() AT TIME ZONE 'Europe/Istanbul');
+  today_date := TO_CHAR(now_tr, 'YYYY-MM-DD');
+  tomorrow_date := TO_CHAR(now_tr + INTERVAL '1 day', 'YYYY-MM-DD');
 
-  -- Evolution API bilgileri
-  api_url := current_setting('app.settings.evolution_api_url', true);
-  api_key := current_setting('app.settings.evolution_api_key', true);
-  instance_name := current_setting('app.settings.evolution_instance', true);
+  SELECT COUNT(*) INTO all_count FROM appointments;
 
-  IF api_url IS NULL THEN
-    api_url := 'https://evolution.yusufsunmez.com';
-  END IF;
-  IF api_key IS NULL THEN
-    api_key := 'B4F652CE0638-4C01-A0AA-11C034BFEC16';
-  END IF;
-  IF instance_name IS NULL THEN
-    instance_name := 'guzellikmerkezi';
-  END IF;
-
-  -- ===== 1 GÜN ÖNCESİ HATIRLATMA =====
-  -- Yarın olan randevular (şimdiden 20-28 saat sonrası)
+  -- ===== BUGÜN + YARIN HATIRLATMA =====
   FOR rec IN
     SELECT id, customer_name, customer_phone, service_title, specialist_name,
            appointment_time, start_time
     FROM appointments
-    WHERE status = 'approved'
+    WHERE status IN ('approved', 'pending')
       AND reminder_1day_sent = FALSE
       AND start_time IS NOT NULL
-      AND (start_time AT TIME ZONE 'Europe/Istanbul')::date = (now_tr + INTERVAL '1 day')::date
+      AND start_time != ''
+      AND (LEFT(start_time, 10) = tomorrow_date OR LEFT(start_time, 10) = today_date)
   LOOP
-    -- Telefon numarasını temizle
+    found_count := found_count + 1;
+
     clean_phone := regexp_replace(rec.customer_phone, '[^0-9]', '', 'g');
-    IF LEFT(clean_phone, 1) = '0' THEN
-      clean_phone := '90' || SUBSTRING(clean_phone FROM 2);
-    END IF;
-    IF LEFT(clean_phone, 2) != '90' THEN
+    IF clean_phone LIKE '0%' THEN
+      clean_phone := '9' || clean_phone;
+    ELSIF length(clean_phone) = 10 THEN
       clean_phone := '90' || clean_phone;
     END IF;
 
-    -- Mesaj oluştur
-    msg := '📅 *Randevu Hatırlatma*' || chr(10) || chr(10)
-        || 'Merhaba ' || COALESCE(rec.customer_name, '') || ',' || chr(10)
-        || '*Yarın* randevunuz bulunmaktadır.' || chr(10) || chr(10)
-        || '💇 Hizmet: ' || COALESCE(rec.service_title, '-') || chr(10)
-        || '👩 Uzman: ' || COALESCE(rec.specialist_name, '-') || chr(10)
-        || '🕐 Saat: ' || COALESCE(rec.appointment_time, '-') || chr(10) || chr(10)
-        || 'Güzellik Merkezi olarak sizi bekliyoruz! ✨';
+    IF LEFT(rec.start_time, 10) = today_date THEN
+      msg := '⏰ *Randevu Hatırlatma*' || chr(10) || chr(10)
+          || 'Merhaba ' || COALESCE(rec.customer_name, '') || ',' || chr(10)
+          || '*Bugün* randevunuz bulunmaktadır.' || chr(10) || chr(10)
+          || '💇 Hizmet: ' || COALESCE(rec.service_title, '-') || chr(10)
+          || '👩 Uzman: ' || COALESCE(rec.specialist_name, '-') || chr(10)
+          || '🕐 Saat: ' || COALESCE(rec.appointment_time, '-') || chr(10) || chr(10)
+          || 'Güzellik Merkezi olarak sizi bekliyoruz! ✨';
+    ELSE
+      msg := '📅 *Randevu Hatırlatma*' || chr(10) || chr(10)
+          || 'Merhaba ' || COALESCE(rec.customer_name, '') || ',' || chr(10)
+          || '*Yarın* randevunuz bulunmaktadır.' || chr(10) || chr(10)
+          || '💇 Hizmet: ' || COALESCE(rec.service_title, '-') || chr(10)
+          || '👩 Uzman: ' || COALESCE(rec.specialist_name, '-') || chr(10)
+          || '🕐 Saat: ' || COALESCE(rec.appointment_time, '-') || chr(10) || chr(10)
+          || 'Güzellik Merkezi olarak sizi bekliyoruz! ✨';
+    END IF;
 
-    -- WhatsApp gönder
-    BEGIN
-      SELECT status INTO response_status FROM net.http_post(
-        url := api_url || '/message/sendText/' || instance_name,
-        headers := jsonb_build_object(
-          'Content-Type', 'application/json',
-          'apikey', api_key
-        ),
-        body := jsonb_build_object(
-          'number', clean_phone,
-          'text', msg
-        )
-      );
+    -- WhatsApp gönder (mevcut çalışan bildirimle AYNI ayarlar)
+    PERFORM net.http_post(
+      url := 'https://evolution.yusufsunmez.com/message/sendText/notlar',
+      headers := '{"Content-Type": "application/json", "apikey": "0B140FBE9CC0-4F77-B104-CF082081AC3B"}'::jsonb,
+      body := jsonb_build_object('number', clean_phone, 'text', msg)
+    );
 
-      -- Gönderildi olarak işaretle
-      UPDATE appointments SET reminder_1day_sent = TRUE WHERE id = rec.id;
-      sent_count := sent_count + 1;
-    EXCEPTION WHEN OTHERS THEN
-      -- Hata olursa devam et
-      NULL;
-    END;
+    UPDATE appointments SET reminder_1day_sent = TRUE WHERE id = rec.id;
+    sent_count := sent_count + 1;
   END LOOP;
 
   -- ===== 2 SAAT ÖNCESİ HATIRLATMA =====
-  -- 2 saat içinde olan randevular
   FOR rec IN
     SELECT id, customer_name, customer_phone, service_title, specialist_name,
            appointment_time, start_time
     FROM appointments
-    WHERE status = 'approved'
+    WHERE status IN ('approved', 'pending')
       AND reminder_2h_sent = FALSE
       AND start_time IS NOT NULL
-      AND (start_time AT TIME ZONE 'Europe/Istanbul') BETWEEN now_tr + INTERVAL '1 hour 30 minutes' AND now_tr + INTERVAL '2 hours 30 minutes'
+      AND start_time != ''
+      AND start_time::timestamp BETWEEN now_tr AND now_tr + INTERVAL '3 hours'
   LOOP
     clean_phone := regexp_replace(rec.customer_phone, '[^0-9]', '', 'g');
-    IF LEFT(clean_phone, 1) = '0' THEN
-      clean_phone := '90' || SUBSTRING(clean_phone FROM 2);
-    END IF;
-    IF LEFT(clean_phone, 2) != '90' THEN
+    IF clean_phone LIKE '0%' THEN
+      clean_phone := '9' || clean_phone;
+    ELSIF length(clean_phone) = 10 THEN
       clean_phone := '90' || clean_phone;
     END IF;
 
     msg := '⏰ *Randevu Hatırlatma*' || chr(10) || chr(10)
         || 'Merhaba ' || COALESCE(rec.customer_name, '') || ',' || chr(10)
-        || 'Randevunuza *2 saat* kaldı!' || chr(10) || chr(10)
+        || 'Randevunuza az kaldı!' || chr(10) || chr(10)
         || '💇 Hizmet: ' || COALESCE(rec.service_title, '-') || chr(10)
         || '👩 Uzman: ' || COALESCE(rec.specialist_name, '-') || chr(10)
         || '🕐 Saat: ' || COALESCE(rec.appointment_time, '-') || chr(10) || chr(10)
         || 'Güzellik Merkezi olarak sizi bekliyoruz! ✨';
 
-    BEGIN
-      SELECT status INTO response_status FROM net.http_post(
-        url := api_url || '/message/sendText/' || instance_name,
-        headers := jsonb_build_object(
-          'Content-Type', 'application/json',
-          'apikey', api_key
-        ),
-        body := jsonb_build_object(
-          'number', clean_phone,
-          'text', msg
-        )
-      );
+    PERFORM net.http_post(
+      url := 'https://evolution.yusufsunmez.com/message/sendText/notlar',
+      headers := '{"Content-Type": "application/json", "apikey": "0B140FBE9CC0-4F77-B104-CF082081AC3B"}'::jsonb,
+      body := jsonb_build_object('number', clean_phone, 'text', msg)
+    );
 
-      UPDATE appointments SET reminder_2h_sent = TRUE WHERE id = rec.id;
-      sent_count := sent_count + 1;
-    EXCEPTION WHEN OTHERS THEN
-      NULL;
-    END;
+    UPDATE appointments SET reminder_2h_sent = TRUE WHERE id = rec.id;
+    sent_count := sent_count + 1;
   END LOOP;
 
   RETURN json_build_object(
     'success', true,
     'sent_count', sent_count,
-    'checked_at', now_tr::text
+    'found_count', found_count,
+    'total_appointments', all_count,
+    'today', today_date,
+    'tomorrow', tomorrow_date
   );
 END;
 $$;
-
--- 3) pg_cron ile otomatik çalıştırma (her 30 dakikada)
--- NOT: pg_cron'u Supabase Dashboard > Database > Extensions'dan aktifleştirmeniz gerekir!
-
--- pg_cron aktifleştirildikten sonra bu satırı çalıştırın:
--- SELECT cron.schedule('appointment-reminders', '*/30 * * * *', 'SELECT send_appointment_reminders()');
-
--- Eğer pg_cron aktif DEĞİLSE, alternatif olarak bu fonksiyonu dışarıdan çağırabilirsiniz:
--- SELECT send_appointment_reminders();
-
--- ============================================
--- TEST: Fonksiyonu manuel çalıştırmak için:
--- SELECT send_appointment_reminders();
--- ============================================
