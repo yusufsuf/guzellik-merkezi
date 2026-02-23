@@ -32,6 +32,7 @@ export default function CalendarView({
     const [currentMonth, setCurrentMonth] = useState(new Date())
     const [busySlots, setBusySlots] = useState([])
     const [loadingSlots, setLoadingSlots] = useState(false)
+    const [closedDays, setClosedDays] = useState([])
 
     const effectiveDuration = totalDuration || service?.duration || 30
 
@@ -39,6 +40,19 @@ export default function CalendarView({
         const t = new Date()
         t.setHours(0, 0, 0, 0)
         return t
+    }, [])
+
+    // Tatil günlerini yükle
+    useEffect(() => {
+        async function loadClosedDays() {
+            try {
+                const { data } = await supabase
+                    .from('closed_days')
+                    .select('date, reason')
+                if (data) setClosedDays(data)
+            } catch { }
+        }
+        loadClosedDays()
     }, [])
 
     useEffect(() => {
@@ -117,8 +131,10 @@ export default function CalendarView({
             date.setHours(0, 0, 0, 0)
             const isPast = date < today
             const isToday = date.getTime() === today.getTime()
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+            const closedInfo = closedDays.find(cd => cd.date === dateStr)
 
-            days.push({ day: d, date, isPast, isToday })
+            days.push({ day: d, date, isPast, isToday, isClosed: !!closedInfo, closedReason: closedInfo?.reason })
         }
 
         return days
@@ -233,17 +249,19 @@ export default function CalendarView({
                     <button
                         key={index}
                         className={`calendar-day ${!d.day ? 'calendar-day--empty' : ''
-                            } ${d.isPast ? 'calendar-day--disabled' : ''
+                            } ${d.isPast || d.isClosed ? 'calendar-day--disabled' : ''
                             } ${d.isToday ? 'calendar-day--today' : ''
                             } ${isSameDay(d.date, selectedDate) ? 'calendar-day--selected' : ''
                             }`}
-                        disabled={!d.day || d.isPast}
+                        disabled={!d.day || d.isPast || d.isClosed}
+                        title={d.isClosed ? `Kapalı: ${d.closedReason}` : ''}
                         onClick={() => {
-                            if (d.day && !d.isPast) {
+                            if (d.day && !d.isPast && !d.isClosed) {
                                 onSelectDate(d.date)
                                 onSelectTime(null)
                             }
                         }}
+                        style={d.isClosed ? { textDecoration: 'line-through', color: '#ef4444' } : {}}
                     >
                         {d.day}
                     </button>

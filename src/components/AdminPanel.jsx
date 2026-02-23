@@ -34,6 +34,131 @@ const DEMO_APPOINTMENTS = [
 
 // Varsayılan şifre hash'i: 'GuzellikAdmin2026!'
 const DEFAULT_ADMIN_HASH = 'ba1c62ac26d48607bdce9364a6911f33854c68e557cd4dbc95da600c6ba8152b'
+// Tatil günleri yönetim bileşeni
+function ClosedDaysTab() {
+    const [closedDays, setClosedDays] = useState([])
+    const [newDate, setNewDate] = useState('')
+    const [newReason, setNewReason] = useState('')
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => { loadClosedDays() }, [])
+
+    async function loadClosedDays() {
+        setLoading(true)
+        try {
+            const { data, error } = await supabase
+                .from('closed_days')
+                .select('*')
+                .order('date', { ascending: true })
+            if (!error && data) setClosedDays(data)
+        } catch { }
+        setLoading(false)
+    }
+
+    async function addClosedDay() {
+        if (!newDate) return
+        try {
+            const { error } = await supabase
+                .from('closed_days')
+                .insert({ date: newDate, reason: newReason || 'Kapalı' })
+            if (!error) {
+                setNewDate('')
+                setNewReason('')
+                loadClosedDays()
+            }
+        } catch { }
+    }
+
+    async function removeClosedDay(id) {
+        try {
+            await supabase.from('closed_days').delete().eq('id', id)
+            setClosedDays(prev => prev.filter(d => d.id !== id))
+        } catch { }
+    }
+
+    const MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
+
+    function formatDate(dateStr) {
+        const d = new Date(dateStr + 'T00:00:00')
+        return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
+    }
+
+    // Bugünden önceki tarihleri filtrele
+    const today = new Date().toISOString().split('T')[0]
+    const futureDays = closedDays.filter(d => d.date >= today)
+    const pastDays = closedDays.filter(d => d.date < today)
+
+    return (
+        <div className="animate-fade-in-up">
+            <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>Tatil / Kapalı Günler</h3>
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
+                Kapalı olduğunuz günleri ekleyin. Bu günlerde müşteriler randevu alamaz.
+            </p>
+
+            {/* Yeni tatil ekle */}
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
+                <input
+                    className="form-input"
+                    type="date"
+                    min={today}
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                    style={{ flex: 1, minWidth: 150 }}
+                />
+                <input
+                    className="form-input"
+                    type="text"
+                    placeholder="Sebep (isteğe bağlı)"
+                    value={newReason}
+                    onChange={(e) => setNewReason(e.target.value)}
+                    style={{ flex: 2, minWidth: 150 }}
+                />
+                <button className="btn btn-primary" onClick={addClosedDay}>
+                    Ekle
+                </button>
+            </div>
+
+            {loading ? (
+                <div className="loading-spinner" />
+            ) : futureDays.length === 0 ? (
+                <div className="empty-state">
+                    <p className="empty-state__text">Tanımlı tatil günü bulunmuyor</p>
+                </div>
+            ) : (
+                futureDays.map((day) => (
+                    <div key={day.id} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: 'var(--space-3) var(--space-4)',
+                        background: 'var(--color-cream)', borderRadius: 'var(--radius-md)',
+                        marginBottom: 'var(--space-2)',
+                    }}>
+                        <div>
+                            <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
+                                📅 {formatDate(day.date)}
+                            </div>
+                            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                                {day.reason}
+                            </div>
+                        </div>
+                        <button
+                            className="btn-remove"
+                            onClick={() => removeClosedDay(day.id)}
+                            style={{ fontSize: 'var(--font-size-xs)' }}
+                        >
+                            Kaldır
+                        </button>
+                    </div>
+                ))
+            )}
+
+            {pastDays.length > 0 && (
+                <div style={{ marginTop: 'var(--space-4)', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                    Geçmiş {pastDays.length} tatil günü gizlendi.
+                </div>
+            )}
+        </div>
+    )
+}
 
 export default function AdminPanel() {
     const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -596,6 +721,8 @@ export default function AdminPanel() {
                     { key: 'approved', label: 'Onaylananlar' },
                     { key: 'rejected', label: 'Reddedilenler' },
                     { key: 'all', label: 'Tümü' },
+                    { key: 'stats', label: '📊 İstatistik' },
+                    { key: 'closeddays', label: '📅 Tatil' },
                     { key: 'blacklist', label: 'Kara Liste' },
                     { key: 'specialists', label: 'Uzmanlar' },
                     { key: 'settings', label: '⚙ Ayarlar' },
@@ -662,30 +789,140 @@ export default function AdminPanel() {
                     <div style={{
                         marginTop: 'var(--space-6)',
                         padding: 'var(--space-4)',
-                        background: '#fff8e6',
+                        background: '#e8f5e9',
                         borderRadius: 'var(--radius-md)',
-                        borderLeft: '4px solid #c5a047',
+                        borderLeft: '4px solid #25D366',
                     }}>
-                        <strong style={{ fontSize: 'var(--font-size-sm)', color: '#92710c' }}>
-                            Kurtarma Kodu
+                        <strong style={{ fontSize: 'var(--font-size-sm)', color: '#2d6a32' }}>
+                            Şifre Kurtarma
                         </strong>
-                        <p style={{ fontSize: 'var(--font-size-sm)', color: '#92710c', margin: '8px 0 0' }}>
+                        <p style={{ fontSize: 'var(--font-size-sm)', color: '#2d6a32', margin: '8px 0 0' }}>
                             Şifrenizi unuttuğunuzda giriş ekranındaki "Şifremi Unuttum" bağlantısını kullanarak
-                            kurtarma kodu ile sıfırlayabilirsiniz. Kurtarma kodunuz:
-                        </p>
-                        <div style={{
-                            fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-base)',
-                            color: '#92710c', marginTop: '8px', letterSpacing: '0.05em',
-                            background: '#fff1cc', padding: '8px 12px', borderRadius: '6px',
-                            display: 'inline-block',
-                        }}>
-                            {RECOVERY_CODE}
-                        </div>
-                        <p style={{ fontSize: 'var(--font-size-xs)', color: '#b08c1a', margin: '8px 0 0' }}>
-                            Bu kodu güvenli bir yere not ediniz!
+                            WhatsApp üzerinden doğrulama kodu ile sıfırlayabilirsiniz.
                         </p>
                     </div>
                 </div>
+
+            ) : activeTab === 'stats' ? (
+                /* ===== İSTATİSTİK TAB ===== */
+                (() => {
+                    const now = new Date()
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+                    const weekAgo = new Date(now.getTime() - 7 * 86400000)
+                    const monthAgo = new Date(now.getTime() - 30 * 86400000)
+
+                    const todayApts = appointments.filter(a => a.start_time && a.start_time.startsWith(todayStr))
+                    const weekApts = appointments.filter(a => a.start_time && new Date(a.start_time) >= weekAgo)
+                    const monthApts = appointments.filter(a => a.start_time && new Date(a.start_time) >= monthAgo)
+
+                    const approved = appointments.filter(a => a.status === 'approved').length
+                    const pending = appointments.filter(a => a.status === 'pending').length
+                    const rejected = appointments.filter(a => a.status === 'rejected').length
+
+                    // En popüler hizmetler
+                    const serviceCounts = {}
+                    appointments.forEach(a => {
+                        if (a.service_title) {
+                            serviceCounts[a.service_title] = (serviceCounts[a.service_title] || 0) + 1
+                        }
+                    })
+                    const topServices = Object.entries(serviceCounts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5)
+
+                    // En çok randevu alan uzmanlar
+                    const specCounts = {}
+                    appointments.forEach(a => {
+                        if (a.specialist_name) {
+                            specCounts[a.specialist_name] = (specCounts[a.specialist_name] || 0) + 1
+                        }
+                    })
+                    const topSpecs = Object.entries(specCounts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5)
+
+                    const statCardStyle = {
+                        padding: 'var(--space-4)', borderRadius: 'var(--radius-md)',
+                        textAlign: 'center', flex: 1, minWidth: 100,
+                    }
+
+                    return (
+                        <div className="animate-fade-in-up">
+                            <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>İstatistikler</h3>
+
+                            {/* Özet Kartları */}
+                            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
+                                <div style={{ ...statCardStyle, background: '#e3f2fd' }}>
+                                    <div style={{ fontSize: '28px', fontWeight: 700, color: '#1565c0' }}>{todayApts.length}</div>
+                                    <div style={{ fontSize: 'var(--font-size-xs)', color: '#1565c0', fontWeight: 500 }}>Bugün</div>
+                                </div>
+                                <div style={{ ...statCardStyle, background: '#f3e5f5' }}>
+                                    <div style={{ fontSize: '28px', fontWeight: 700, color: '#7b1fa2' }}>{weekApts.length}</div>
+                                    <div style={{ fontSize: 'var(--font-size-xs)', color: '#7b1fa2', fontWeight: 500 }}>Bu Hafta</div>
+                                </div>
+                                <div style={{ ...statCardStyle, background: '#fff3e0' }}>
+                                    <div style={{ fontSize: '28px', fontWeight: 700, color: '#e65100' }}>{monthApts.length}</div>
+                                    <div style={{ fontSize: 'var(--font-size-xs)', color: '#e65100', fontWeight: 500 }}>Bu Ay</div>
+                                </div>
+                                <div style={{ ...statCardStyle, background: '#e8f5e9' }}>
+                                    <div style={{ fontSize: '28px', fontWeight: 700, color: '#2d6a32' }}>{appointments.length}</div>
+                                    <div style={{ fontSize: 'var(--font-size-xs)', color: '#2d6a32', fontWeight: 500 }}>Toplam</div>
+                                </div>
+                            </div>
+
+                            {/* Durum Dağılımı */}
+                            <div style={{
+                                background: 'var(--color-cream)', borderRadius: 'var(--radius-md)',
+                                padding: 'var(--space-4)', marginBottom: 'var(--space-4)',
+                            }}>
+                                <h4 style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>Durum Dağılımı</h4>
+                                <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 'var(--font-size-sm)' }}>✅ Onaylanan: <strong>{approved}</strong></span>
+                                    <span style={{ fontSize: 'var(--font-size-sm)' }}>⏳ Bekleyen: <strong>{pending}</strong></span>
+                                    <span style={{ fontSize: 'var(--font-size-sm)' }}>❌ Reddedilen: <strong>{rejected}</strong></span>
+                                </div>
+                                {appointments.length > 0 && (
+                                    <div style={{ marginTop: 'var(--space-3)', height: 8, borderRadius: 4, background: '#e5e7eb', display: 'flex', overflow: 'hidden' }}>
+                                        <div style={{ width: `${(approved / appointments.length * 100)}%`, background: '#22c55e', transition: 'width 0.5s' }} />
+                                        <div style={{ width: `${(pending / appointments.length * 100)}%`, background: '#f59e0b', transition: 'width 0.5s' }} />
+                                        <div style={{ width: `${(rejected / appointments.length * 100)}%`, background: '#ef4444', transition: 'width 0.5s' }} />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* En Popüler Hizmetler */}
+                            <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+                                <div style={{ flex: 1, minWidth: 200, background: 'var(--color-cream)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)' }}>
+                                    <h4 style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>🏆 En Popüler Hizmetler</h4>
+                                    {topServices.length === 0 ? (
+                                        <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>Henüz veri yok</p>
+                                    ) : topServices.map(([name, count], i) => (
+                                        <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < topServices.length - 1 ? '1px solid rgba(0,0,0,0.06)' : 'none' }}>
+                                            <span style={{ fontSize: 'var(--font-size-sm)' }}>{i + 1}. {name}</span>
+                                            <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-accent)' }}>{count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div style={{ flex: 1, minWidth: 200, background: 'var(--color-cream)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)' }}>
+                                    <h4 style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, marginBottom: 'var(--space-3)' }}>👩 En Çok Tercih Edilen Uzmanlar</h4>
+                                    {topSpecs.length === 0 ? (
+                                        <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>Henüz veri yok</p>
+                                    ) : topSpecs.map(([name, count], i) => (
+                                        <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < topSpecs.length - 1 ? '1px solid rgba(0,0,0,0.06)' : 'none' }}>
+                                            <span style={{ fontSize: 'var(--font-size-sm)' }}>{i + 1}. {name}</span>
+                                            <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-accent)' }}>{count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )
+                })()
+
+            ) : activeTab === 'closeddays' ? (
+                /* ===== TATİL GÜNLERİ TAB ===== */
+                <ClosedDaysTab />
 
             ) : activeTab === 'specialists' ? (
                 /* ===== UZMANLAR TAB ===== */
