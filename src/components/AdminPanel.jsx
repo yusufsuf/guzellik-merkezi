@@ -863,6 +863,43 @@ export default function AdminPanel() {
                             WhatsApp üzerinden doğrulama kodu ile sıfırlayabilirsiniz.
                         </p>
                     </div>
+
+                    {/* Google Calendar Entegrasyonu */}
+                    <div style={{
+                        marginTop: 'var(--space-6)',
+                        padding: 'var(--space-4)',
+                        background: '#e3f2fd',
+                        borderRadius: 'var(--radius-md)',
+                        borderLeft: '4px solid #1976d2',
+                    }}>
+                        <strong style={{ fontSize: 'var(--font-size-sm)', color: '#1565c0' }}>
+                            📅 Google Calendar Entegrasyonu
+                        </strong>
+                        <p style={{ fontSize: 'var(--font-size-xs)', color: '#1565c0', margin: '8px 0' }}>
+                            Google Apps Script webhook URL'sini girin. Randevu onaylandığında uzmanın Google Calendar'ına otomatik eklenir.
+                        </p>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                            <input
+                                className="form-input"
+                                type="text"
+                                placeholder="https://script.google.com/macros/s/..."
+                                defaultValue=""
+                                style={{ fontSize: 'var(--font-size-xs)', padding: '8px 10px', flex: 1 }}
+                                id="gcal-webhook-input"
+                                ref={el => {
+                                    if (el && !el.dataset.loaded) {
+                                        el.dataset.loaded = 'true'
+                                        supabase.from('admin_settings').select('value').eq('key', 'google_calendar_webhook').single()
+                                            .then(({ data }) => { if (data?.value) el.value = data.value })
+                                    }
+                                }}
+                                onBlur={async (e) => {
+                                    const url = e.target.value.trim()
+                                    await supabase.from('admin_settings').upsert({ key: 'google_calendar_webhook', value: url })
+                                }}
+                            />
+                        </div>
+                    </div>
                 </div>
 
             ) : activeTab === 'stats' ? (
@@ -1069,7 +1106,7 @@ export default function AdminPanel() {
                 <div className="animate-fade-in-up">
                     <h3 style={{ marginBottom: 'var(--space-4)', fontWeight: 600 }}>Uzman Yönetimi</h3>
                     <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
-                        Pasif olan uzmanlar randevu ekranında görünmez.
+                        Pasif olan uzmanlar randevu ekranında görünmez. Google Calendar ID ekleyerek uzmanın takvimine otomatik randevu eklenebilir.
                     </p>
 
                     {specialistsList.length === 0 ? (
@@ -1109,6 +1146,24 @@ export default function AdminPanel() {
                                             {spec.is_active !== false ? 'Pasife Al' : 'Aktif Et'}
                                         </button>
                                     </div>
+                                </div>
+                                {/* Google Calendar ID */}
+                                <div style={{ marginTop: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                                    <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>📅 Calendar ID:</span>
+                                    <input
+                                        className="form-input"
+                                        type="text"
+                                        placeholder="ornek@gmail.com veya takvim-id@group.calendar.google.com"
+                                        defaultValue={spec.calendar_id || ''}
+                                        style={{ fontSize: 'var(--font-size-xs)', padding: '6px 10px', flex: 1 }}
+                                        onBlur={async (e) => {
+                                            const newCalId = e.target.value.trim()
+                                            if (newCalId !== (spec.calendar_id || '')) {
+                                                await supabase.from('specialists').update({ calendar_id: newCalId }).eq('id', spec.id)
+                                                setSpecialistsList(prev => prev.map(s => s.id === spec.id ? { ...s, calendar_id: newCalId } : s))
+                                            }
+                                        }}
+                                    />
                                 </div>
                             </div>
                         ))
