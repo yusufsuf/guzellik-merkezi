@@ -73,7 +73,7 @@ BEGIN
         || '🕐 Saat: ' || COALESCE(NEW.appointment_time, '-') || chr(10)
         || '🔑 Kod: ' || COALESCE(NEW.booking_code, '-') || chr(10) || chr(10)
         || '👉 Onaylamak için admin panele gidin:' || chr(10)
-        || 'https://guzellikmerkezi.yusufsunmez.com/?admin';
+        || 'https://guzellikmerkezi.yusufsunmez.com/#admin';
       should_notify_admin := true;
     END IF;
 

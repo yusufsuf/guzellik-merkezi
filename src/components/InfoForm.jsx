@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export default function InfoForm({ data, onUpdate, onNext }) {
+export default function InfoForm({ data, onUpdate, onNext, blacklistError }) {
     const [errors, setErrors] = useState({})
 
     function validate() {
@@ -96,6 +96,22 @@ export default function InfoForm({ data, onUpdate, onNext }) {
                     </span>
                 )}
             </div>
+
+            {blacklistError && (
+                <div style={{
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 'var(--space-3) var(--space-4)',
+                    color: '#dc2626',
+                    fontSize: 'var(--font-size-sm)',
+                    fontWeight: 500,
+                    textAlign: 'center',
+                    animation: 'fadeInUp 0.3s ease',
+                }}>
+                    🚫 {blacklistError}
+                </div>
+            )}
 
             <button type="submit" className="btn btn-primary btn-full btn-lg" id="info-next-btn">
                 Devam Et

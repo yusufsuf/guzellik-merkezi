@@ -224,7 +224,26 @@ function App() {
   }
 
   // --- NAVİGASYON ---
-  function handleInfoNext() {
+  const [blacklistError, setBlacklistError] = useState('')
+
+  async function handleInfoNext() {
+    setBlacklistError('')
+
+    // Kara liste kontrolü
+    try {
+      const phone = customerInfo.customerPhone.replace(/\D/g, '')
+      const { data } = await supabase
+        .from('blacklist')
+        .select('id')
+        .or(`phone.eq.${customerInfo.customerPhone},phone.eq.${phone},phone.eq.0${phone}`)
+        .limit(1)
+
+      if (data && data.length > 0) {
+        setBlacklistError('Randevu işleminize devam edilemiyor. Detaylı bilgi için işletme ile iletişime geçiniz.')
+        return
+      }
+    } catch { }
+
     if (isPhoneVerified) {
       setPhase('services')
     } else {
@@ -448,6 +467,7 @@ function App() {
             data={customerInfo}
             onUpdate={updateCustomerInfo}
             onNext={handleInfoNext}
+            blacklistError={blacklistError}
           />
         )}
 
