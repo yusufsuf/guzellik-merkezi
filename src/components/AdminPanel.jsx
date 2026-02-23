@@ -30,8 +30,8 @@ const DEMO_APPOINTMENTS = [
     },
 ]
 
-// Kurtarma kodu — bunu güvenli bir yere kaydedin!
-const RECOVERY_CODE = 'GUZELLIK-KURTARMA-2026'
+// Admin telefon numarası (WhatsApp şifre sıfırlama için)
+const ADMIN_PHONE = '0(534) 084 10 77'
 
 // Varsayılan şifre hash'i: 'GuzellikAdmin2026!'
 const DEFAULT_ADMIN_HASH = 'ba1c62ac26d48607bdce9364a6911f33854c68e557cd4dbc95da600c6ba8152b'
@@ -60,12 +60,15 @@ export default function AdminPanel() {
     const [confirmPwd, setConfirmPwd] = useState('')
     const [pwdMessage, setPwdMessage] = useState({ type: '', text: '' })
 
-    // Şifre sıfırlama (kurtarma kodu ile)
+    // Şifre sıfırlama (WhatsApp OTP ile)
     const [showRecovery, setShowRecovery] = useState(false)
-    const [recoveryInput, setRecoveryInput] = useState('')
+    const [recoveryStep, setRecoveryStep] = useState('send') // 'send' | 'verify' | 'newpwd'
+    const [recoveryOtp, setRecoveryOtp] = useState('')
     const [recoveryNewPwd, setRecoveryNewPwd] = useState('')
     const [recoveryConfirmPwd, setRecoveryConfirmPwd] = useState('')
     const [recoveryMessage, setRecoveryMessage] = useState({ type: '', text: '' })
+    const [recoveryLoading, setRecoveryLoading] = useState(false)
+    const [recoveryCountdown, setRecoveryCountdown] = useState(0)
 
     // Silme onayı
     const [deleteConfirmId, setDeleteConfirmId] = useState(null)
@@ -173,15 +176,65 @@ export default function AdminPanel() {
         setConfirmPwd('')
     }
 
-    // Kurtarma kodu ile sıfırlama
+    // WhatsApp OTP geri sayım
+    useEffect(() => {
+        if (recoveryCountdown <= 0) return
+        const timer = setTimeout(() => setRecoveryCountdown(c => c - 1), 1000)
+        return () => clearTimeout(timer)
+    }, [recoveryCountdown])
+
+    // WhatsApp ile şifre sıfırlama kodu gönder
+    async function handleSendRecoveryOtp() {
+        setRecoveryLoading(true)
+        setRecoveryMessage({ type: '', text: '' })
+        try {
+            const { data, error } = await supabase.rpc('send_otp', {
+                phone_input: ADMIN_PHONE
+            })
+            if (error) throw error
+            if (data?.success) {
+                setRecoveryStep('verify')
+                setRecoveryCountdown(120)
+                setRecoveryMessage({ type: 'success', text: 'Doğrulama kodu WhatsApp ile gönderildi!' })
+            } else {
+                setRecoveryMessage({ type: 'error', text: data?.message || 'Kod gönderilemedi.' })
+            }
+        } catch {
+            setRecoveryMessage({ type: 'error', text: 'Kod gönderilemedi. Tekrar deneyin.' })
+        }
+        setRecoveryLoading(false)
+    }
+
+    // OTP doğrula
+    async function handleVerifyRecoveryOtp() {
+        if (recoveryOtp.length !== 6) {
+            setRecoveryMessage({ type: 'error', text: '6 haneli kodu giriniz.' })
+            return
+        }
+        setRecoveryLoading(true)
+        setRecoveryMessage({ type: '', text: '' })
+        try {
+            const { data, error } = await supabase.rpc('verify_otp', {
+                phone_input: ADMIN_PHONE,
+                code_input: recoveryOtp
+            })
+            if (error) throw error
+            if (data?.success) {
+                setRecoveryStep('newpwd')
+                setRecoveryMessage({ type: 'success', text: 'Doğrulama başarılı! Yeni şifrenizi belirleyin.' })
+            } else {
+                setRecoveryMessage({ type: 'error', text: data?.message || 'Geçersiz kod.' })
+            }
+        } catch {
+            setRecoveryMessage({ type: 'error', text: 'Doğrulama başarısız.' })
+        }
+        setRecoveryLoading(false)
+    }
+
+    // Yeni şifre kaydet
     async function handleRecoveryReset(e) {
         e.preventDefault()
         setRecoveryMessage({ type: '', text: '' })
-
-        if (recoveryInput !== RECOVERY_CODE) {
-            setRecoveryMessage({ type: 'error', text: 'Kurtarma kodu yanlış!' })
-            return
-        }
 
         if (recoveryNewPwd.length < 8) {
             setRecoveryMessage({ type: 'error', text: 'Yeni şifre en az 8 karakter olmalıdır.' })
@@ -203,12 +256,13 @@ export default function AdminPanel() {
         } catch { }
 
         setRecoveryMessage({ type: 'success', text: 'Şifre başarıyla sıfırlandı! Yeni şifrenizle giriş yapabilirsiniz.' })
-        setRecoveryInput('')
+        setRecoveryOtp('')
         setRecoveryNewPwd('')
         setRecoveryConfirmPwd('')
 
         setTimeout(() => {
             setShowRecovery(false)
+            setRecoveryStep('send')
             setRecoveryMessage({ type: '', text: '' })
         }, 3000)
     }
@@ -380,45 +434,96 @@ export default function AdminPanel() {
                             </div>
                         )}
 
-                        <div className="form-group">
-                            <label className="form-label">Kurtarma Kodu</label>
-                            <input
-                                className="form-input"
-                                type="text"
-                                placeholder="Kurtarma kodunu giriniz"
-                                value={recoveryInput}
-                                onChange={(e) => setRecoveryInput(e.target.value)}
-                                autoFocus
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Yeni Şifre</label>
-                            <input
-                                className="form-input"
-                                type="password"
-                                placeholder="Yeni şifre (min. 8 karakter)"
-                                value={recoveryNewPwd}
-                                onChange={(e) => setRecoveryNewPwd(e.target.value)}
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Yeni Şifre (Tekrar)</label>
-                            <input
-                                className="form-input"
-                                type="password"
-                                placeholder="Yeni şifreyi tekrar giriniz"
-                                value={recoveryConfirmPwd}
-                                onChange={(e) => setRecoveryConfirmPwd(e.target.value)}
-                            />
-                        </div>
-                        <button type="submit" className="btn btn-primary btn-full">
-                            Şifreyi Sıfırla
-                        </button>
+                        {recoveryStep === 'send' && (
+                            <>
+                                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', textAlign: 'center' }}>
+                                    Admin telefonuna WhatsApp ile doğrulama kodu gönderilecektir.
+                                </p>
+                                <button
+                                    type="button"
+                                    className="btn btn-primary btn-full"
+                                    onClick={handleSendRecoveryOtp}
+                                    disabled={recoveryLoading}
+                                    style={{ background: '#25D366' }}
+                                >
+                                    {recoveryLoading ? 'Gönderiliyor...' : (
+                                        <>
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                                            </svg>
+                                            WhatsApp ile Kod Gönder
+                                        </>
+                                    )}
+                                </button>
+                            </>
+                        )}
+
+                        {recoveryStep === 'verify' && (
+                            <>
+                                <div className="form-group">
+                                    <label className="form-label">Doğrulama Kodu</label>
+                                    <input
+                                        className="form-input"
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={6}
+                                        placeholder="6 haneli kod"
+                                        value={recoveryOtp}
+                                        onChange={(e) => setRecoveryOtp(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                                        autoFocus
+                                        style={{ textAlign: 'center', fontSize: 'var(--font-size-xl)', letterSpacing: '0.3em', fontFamily: 'monospace', fontWeight: 700 }}
+                                    />
+                                </div>
+                                {recoveryCountdown > 0 && (
+                                    <div style={{ textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
+                                        Kalan süre: <strong style={{ color: 'var(--color-accent)' }}>{Math.floor(recoveryCountdown / 60)}:{String(recoveryCountdown % 60).padStart(2, '0')}</strong>
+                                    </div>
+                                )}
+                                <button
+                                    type="button"
+                                    className="btn btn-primary btn-full"
+                                    onClick={handleVerifyRecoveryOtp}
+                                    disabled={recoveryLoading || recoveryOtp.length !== 6}
+                                >
+                                    {recoveryLoading ? 'Doğrulanıyor...' : 'Doğrula'}
+                                </button>
+                            </>
+                        )}
+
+                        {recoveryStep === 'newpwd' && (
+                            <>
+                                <div className="form-group">
+                                    <label className="form-label">Yeni Şifre</label>
+                                    <input
+                                        className="form-input"
+                                        type="password"
+                                        placeholder="Yeni şifre (min. 8 karakter)"
+                                        value={recoveryNewPwd}
+                                        onChange={(e) => setRecoveryNewPwd(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">Yeni Şifre (Tekrar)</label>
+                                    <input
+                                        className="form-input"
+                                        type="password"
+                                        placeholder="Yeni şifreyi tekrar giriniz"
+                                        value={recoveryConfirmPwd}
+                                        onChange={(e) => setRecoveryConfirmPwd(e.target.value)}
+                                    />
+                                </div>
+                                <button type="submit" className="btn btn-primary btn-full">
+                                    Şifreyi Sıfırla
+                                </button>
+                            </>
+                        )}
+
                         <button
                             type="button"
                             className="btn btn-secondary btn-full"
                             style={{ marginTop: 'var(--space-3)' }}
-                            onClick={() => { setShowRecovery(false); setRecoveryMessage({ type: '', text: '' }) }}
+                            onClick={() => { setShowRecovery(false); setRecoveryStep('send'); setRecoveryOtp(''); setRecoveryMessage({ type: '', text: '' }) }}
                         >
                             Giriş Ekranına Dön
                         </button>
