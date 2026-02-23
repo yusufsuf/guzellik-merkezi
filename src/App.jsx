@@ -244,6 +244,24 @@ function App() {
       }
     } catch { }
 
+    // Daha önce doğrulanmış mı kontrol et
+    if (!isPhoneVerified) {
+      try {
+        const phone = customerInfo.customerPhone.replace(/\D/g, '')
+        const { data } = await supabase
+          .from('verified_phones')
+          .select('id')
+          .or(`phone.eq.${phone},phone.eq.0${phone}`)
+          .limit(1)
+
+        if (data && data.length > 0) {
+          setIsPhoneVerified(true)
+          setPhase('services')
+          return
+        }
+      } catch { }
+    }
+
     if (isPhoneVerified) {
       setPhase('services')
     } else {
@@ -251,8 +269,16 @@ function App() {
     }
   }
 
-  function handlePhoneVerified() {
+  async function handlePhoneVerified() {
     setIsPhoneVerified(true)
+
+    // Doğrulanan numarayı kaydet
+    try {
+      const phone = customerInfo.customerPhone.replace(/\D/g, '')
+      await supabase.from('verified_phones')
+        .upsert({ phone }, { onConflict: 'phone' })
+    } catch { }
+
     setPhase('services')
   }
 
