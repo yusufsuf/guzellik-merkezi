@@ -161,14 +161,28 @@ function App() {
   // PWA Install
   const [deferredPrompt, setDeferredPrompt] = useState(null)
   const [showInstallBanner, setShowInstallBanner] = useState(false)
+  const [isIOSBanner, setIsIOSBanner] = useState(false)
 
   const isAdmin = window.location.pathname === '/admin' || window.location.hash === '#admin'
 
-  // PWA install prompt'u yakala
+  // PWA install prompt'u yakala (Android/Desktop) + iOS tespiti
   useEffect(() => {
     const dismissed = localStorage.getItem('pwa_banner_dismissed')
     if (dismissed) return
 
+    // Zaten standalone modda mı? (PWA olarak açılmış)
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
+    if (isStandalone) return
+
+    // iOS tespiti
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    if (isIOS) {
+      setIsIOSBanner(true)
+      setShowInstallBanner(true)
+      return
+    }
+
+    // Android/Desktop
     const handler = (e) => {
       e.preventDefault()
       setDeferredPrompt(e)
@@ -626,22 +640,34 @@ function App() {
         }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 600, fontSize: '0.95rem', marginBottom: 2 }}>
-              📱 Uygulamayı Yükle
+              📱 {isIOSBanner ? 'Ana Ekrana Ekle' : 'Uygulamayı Yükle'}
             </div>
             <div style={{ fontSize: '0.78rem', opacity: 0.9 }}>
-              Ana ekrana ekleyerek hızlı erişim sağlayın
+              {isIOSBanner ? (
+                <span>
+                  Safari'de <span style={{ fontSize: '1.1rem', verticalAlign: 'middle' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle', display: 'inline' }}>
+                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                      <polyline points="16 6 12 2 8 6" />
+                      <line x1="12" y1="2" x2="12" y2="15" />
+                    </svg>
+                  </span> butonuna, sonra <strong>"Ana Ekrana Ekle"</strong>'ye dokunun
+                </span>
+              ) : 'Ana ekrana ekleyerek hızlı erişim sağlayın'}
             </div>
           </div>
-          <button
-            onClick={handleInstallClick}
-            style={{
-              background: '#fff', color: '#e65100', border: 'none',
-              padding: '8px 18px', borderRadius: 8, fontWeight: 700,
-              fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            Yükle
-          </button>
+          {!isIOSBanner && (
+            <button
+              onClick={handleInstallClick}
+              style={{
+                background: '#fff', color: '#e65100', border: 'none',
+                padding: '8px 18px', borderRadius: 8, fontWeight: 700,
+                fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              Yükle
+            </button>
+          )}
           <button
             onClick={dismissInstallBanner}
             style={{
