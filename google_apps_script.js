@@ -81,8 +81,8 @@ function doPost(e) {
             description: eventDescription,
         });
 
-        // 1 saat önce hatırlatma
-        event.addPopupReminder(60);
+        // Alarmı kapat (bildirimsiz etkinlik)
+        event.removeAllReminders();
 
         return ContentService.createTextOutput(
             JSON.stringify({

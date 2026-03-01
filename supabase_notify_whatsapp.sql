@@ -1,6 +1,6 @@
 -- ============================================
--- RANDEVU BİLDİRİM SİSTEMİ v3 (WhatsApp)
--- Yeni: Pending randevularda admin'e de bildirim gider
+-- RANDEVU BİLDİRİM SİSTEMİ v4 (WhatsApp)
+-- Tarih bilgisi eklendi
 -- Bu SQL'i Supabase SQL Editor'de çalıştırınız.
 -- ============================================
 
@@ -8,7 +8,7 @@
 DROP TRIGGER IF EXISTS trg_appointment_status_notify ON appointments;
 DROP TRIGGER IF EXISTS trg_appointment_insert_notify ON appointments;
 
--- Bildirim fonksiyonu (INSERT + UPDATE + Admin bildirim)
+-- Bildirim fonksiyonu (INSERT + UPDATE + Admin bildirim + TARİH)
 CREATE OR REPLACE FUNCTION notify_appointment_status()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -21,6 +21,7 @@ DECLARE
   admin_msg TEXT;
   should_send BOOLEAN := false;
   should_notify_admin BOOLEAN := false;
+  tarih_str TEXT;
 BEGIN
   -- Müşteri telefon numarasını temizle
   clean_phone := regexp_replace(NEW.customer_phone, '[^0-9]', '', 'g');
@@ -41,6 +42,14 @@ BEGIN
     END IF;
   END IF;
 
+  -- Tarih bilgisini oluştur (start_time: "2026-03-05T14:00:00")
+  tarih_str := '-';
+  IF NEW.start_time IS NOT NULL AND NEW.start_time != '' THEN
+    tarih_str := SUBSTRING(NEW.start_time FROM 9 FOR 2) || '/'
+              || SUBSTRING(NEW.start_time FROM 6 FOR 2) || '/'
+              || SUBSTRING(NEW.start_time FROM 1 FOR 4);
+  END IF;
+
   -- INSERT: Yeni randevu oluşturulduğunda
   IF TG_OP = 'INSERT' THEN
     IF NEW.status = 'approved' THEN
@@ -48,6 +57,7 @@ BEGIN
         || '💇 Güzellik Merkezi' || chr(10)
         || '📋 Hizmet: ' || COALESCE(NEW.service_title, '-') || chr(10)
         || '👩 Uzman: ' || COALESCE(NEW.specialist_name, '-') || chr(10)
+        || '📅 Tarih: ' || tarih_str || chr(10)
         || '🕐 Saat: ' || COALESCE(NEW.appointment_time, '-') || chr(10)
         || '🔑 Kod: ' || COALESCE(NEW.booking_code, '-') || chr(10) || chr(10)
         || 'Randevunuza zamanında gelmenizi rica ederiz. İyi günler! 💕';
@@ -59,6 +69,7 @@ BEGIN
         || '💇 Güzellik Merkezi' || chr(10)
         || '📋 Hizmet: ' || COALESCE(NEW.service_title, '-') || chr(10)
         || '👩 Uzman: ' || COALESCE(NEW.specialist_name, '-') || chr(10)
+        || '📅 Tarih: ' || tarih_str || chr(10)
         || '🕐 Saat: ' || COALESCE(NEW.appointment_time, '-') || chr(10)
         || '🔑 Kod: ' || COALESCE(NEW.booking_code, '-') || chr(10) || chr(10)
         || 'Randevunuz onay beklemektedir. Onaylandığında size bilgi verilecektir.';
@@ -70,6 +81,7 @@ BEGIN
         || '📞 Telefon: ' || COALESCE(NEW.customer_phone, '-') || chr(10)
         || '📋 Hizmet: ' || COALESCE(NEW.service_title, '-') || chr(10)
         || '👩 Uzman: ' || COALESCE(NEW.specialist_name, '-') || chr(10)
+        || '📅 Tarih: ' || tarih_str || chr(10)
         || '🕐 Saat: ' || COALESCE(NEW.appointment_time, '-') || chr(10)
         || '🔑 Kod: ' || COALESCE(NEW.booking_code, '-') || chr(10) || chr(10)
         || '👉 Onaylamak için admin panele gidin:' || chr(10)
@@ -85,6 +97,7 @@ BEGIN
           || '💇 Güzellik Merkezi' || chr(10)
           || '📋 Hizmet: ' || COALESCE(NEW.service_title, '-') || chr(10)
           || '👩 Uzman: ' || COALESCE(NEW.specialist_name, '-') || chr(10)
+          || '📅 Tarih: ' || tarih_str || chr(10)
           || '🕐 Saat: ' || COALESCE(NEW.appointment_time, '-') || chr(10)
           || '🔑 Kod: ' || COALESCE(NEW.booking_code, '-') || chr(10) || chr(10)
           || 'Randevunuza zamanında gelmenizi rica ederiz. İyi günler! 💕';
@@ -94,6 +107,7 @@ BEGIN
         msg := '❌ Randevunuz Reddedildi' || chr(10) || chr(10)
           || '💇 Güzellik Merkezi' || chr(10)
           || '📋 Hizmet: ' || COALESCE(NEW.service_title, '-') || chr(10)
+          || '📅 Tarih: ' || tarih_str || chr(10)
           || '🔑 Kod: ' || COALESCE(NEW.booking_code, '-') || chr(10) || chr(10)
           || 'Randevunuz maalesef reddedilmiştir. Farklı bir tarih için yeniden randevu oluşturabilirsiniz.';
         should_send := true;
