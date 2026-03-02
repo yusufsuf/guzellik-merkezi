@@ -1,3 +1,5 @@
+import config from '../config'
+
 const TURKISH_MONTHS = [
     'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
     'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
@@ -39,7 +41,7 @@ export default function SuccessScreen({ bookingResults, customerInfo, onNewBooki
             <p className="success-message">
                 {hasPending
                     ? 'Bazı randevularınız yönetici onayına gönderildi. En kısa sürede bilgilendirileceksiniz.'
-                    : 'Randevularınız başarıyla oluşturuldu. Belirlenen saatlerde sizi güzellik merkezimizde ağırlamaktan memnuniyet duyarız. İyi günler dileriz.'
+                    : `Randevularınız başarıyla oluşturuldu. Belirlenen saatlerde sizi ${config.businessName}'de ağırlamaktan memnuniyet duyarız. İyi günler dileriz.`
                 }
             </p>
 
