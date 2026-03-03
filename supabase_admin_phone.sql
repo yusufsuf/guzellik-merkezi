@@ -63,7 +63,7 @@ BEGIN
 
   -- WhatsApp mesajı gönder
   PERFORM net.http_post(
-    url := 'https://evolution.yusufsunmez.com/message/sendText/notlar',
+    url := 'https://evolution.yusufsunmez.com/message/sendText/deneme',
     headers := '{"Content-Type": "application/json", "apikey": "085807753BAB-4EA8-BB6F-C42DB5453975"}'::jsonb,
     body := jsonb_build_object(
       'number', admin_phone_number,

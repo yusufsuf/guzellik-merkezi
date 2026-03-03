@@ -69,7 +69,7 @@ BEGIN
 
     -- WhatsApp gönder (mevcut çalışan bildirimle AYNI ayarlar)
     PERFORM net.http_post(
-      url := 'https://evolution.yusufsunmez.com/message/sendText/notlar',
+      url := 'https://evolution.yusufsunmez.com/message/sendText/deneme',
       headers := '{"Content-Type": "application/json", "apikey": "085807753BAB-4EA8-BB6F-C42DB5453975"}'::jsonb,
       body := jsonb_build_object('number', clean_phone, 'text', msg)
     );
@@ -105,7 +105,7 @@ BEGIN
         || 'Güzellik Merkezi olarak sizi bekliyoruz! ✨';
 
     PERFORM net.http_post(
-      url := 'https://evolution.yusufsunmez.com/message/sendText/notlar',
+      url := 'https://evolution.yusufsunmez.com/message/sendText/deneme',
       headers := '{"Content-Type": "application/json", "apikey": "085807753BAB-4EA8-BB6F-C42DB5453975"}'::jsonb,
       body := jsonb_build_object('number', clean_phone, 'text', msg)
     );
