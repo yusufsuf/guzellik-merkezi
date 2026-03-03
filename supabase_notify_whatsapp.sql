@@ -85,7 +85,7 @@ BEGIN
         || '🕐 Saat: ' || COALESCE(NEW.appointment_time, '-') || chr(10)
         || '🔑 Kod: ' || COALESCE(NEW.booking_code, '-') || chr(10) || chr(10)
         || '👉 Onaylamak için admin panele gidin:' || chr(10)
-        || 'https://guzellikmerkezi.yusufsunmez.com/#admin';
+        || 'https://guzellik-merkezi.yusufsunmez.com/#admin';
       should_notify_admin := true;
     END IF;
 
@@ -118,8 +118,8 @@ BEGIN
   -- Müşteriye mesaj gönder
   IF should_send AND msg IS NOT NULL THEN
     PERFORM net.http_post(
-      url := 'https://evolution.yusufsunmez.com/message/sendText/notlar',
-      headers := '{"Content-Type": "application/json", "apikey": "0B140FBE9CC0-4F77-B104-CF082081AC3B"}'::jsonb,
+      url := 'https://evolution.yusufsunmez.com/message/sendText/deneme',
+      headers := '{"Content-Type": "application/json", "apikey": "085807753BAB-4EA8-BB6F-C42DB5453975"}'::jsonb,
       body := jsonb_build_object('number', clean_phone, 'text', msg)
     );
   END IF;
@@ -127,8 +127,8 @@ BEGIN
   -- Admin'e bildirim gönder
   IF should_notify_admin AND admin_msg IS NOT NULL AND admin_phone IS NOT NULL THEN
     PERFORM net.http_post(
-      url := 'https://evolution.yusufsunmez.com/message/sendText/notlar',
-      headers := '{"Content-Type": "application/json", "apikey": "0B140FBE9CC0-4F77-B104-CF082081AC3B"}'::jsonb,
+      url := 'https://evolution.yusufsunmez.com/message/sendText/deneme',
+      headers := '{"Content-Type": "application/json", "apikey": "085807753BAB-4EA8-BB6F-C42DB5453975"}'::jsonb,
       body := jsonb_build_object('number', admin_phone, 'text', admin_msg)
     );
   END IF;

@@ -64,7 +64,7 @@ BEGIN
   -- WhatsApp mesajı gönder
   PERFORM net.http_post(
     url := 'https://evolution.yusufsunmez.com/message/sendText/notlar',
-    headers := '{"Content-Type": "application/json", "apikey": "0B140FBE9CC0-4F77-B104-CF082081AC3B"}'::jsonb,
+    headers := '{"Content-Type": "application/json", "apikey": "085807753BAB-4EA8-BB6F-C42DB5453975"}'::jsonb,
     body := jsonb_build_object(
       'number', admin_phone_number,
       'text', '🔐 Admin Şifre Sıfırlama' || chr(10) || chr(10) || 'Doğrulama kodunuz: ' || otp_code || chr(10) || chr(10) || 'Bu kod 5 dakika geçerlidir. Kimseyle paylaşmayın.'
